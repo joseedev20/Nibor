@@ -1,0 +1,24 @@
+# Cloudflare Worker — API de Nibor Finanzas
+name = "nibor-finanzas"
+main = "server/index.js"
+compatibility_date = "2025-10-01"
+
+[assets]
+directory = "./dist/"
+not_found_handling = "single-page-application"
+
+# Para desarrollo local el database_id puede ser un placeholder.
+# Antes del primer deploy remoto: `npx wrangler d1 create nibor-finanzas`
+# y pegar aquí el database_id real que devuelve.
+[[d1_databases]]
+binding = "DB"
+database_name = "nibor-finanzas"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+# Archivos adjuntos (PDFs de SOAT, tecnomecánica, etc.).
+# Local: wrangler dev lo simula solo. Antes del primer deploy remoto:
+# `npx wrangler r2 bucket create nibor-files`
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "nibor-files"

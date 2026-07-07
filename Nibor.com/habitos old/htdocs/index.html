@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Habit App Login</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+
+<link rel="icon" type="image/png" sizes="32x32" href="image/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="96x96" href="image/favicon-96x96.png">
+<link rel="icon" type="image/x-icon" href="image/favicon.ico">
+
+<!-- iPhone / iPad -->
+<link rel="apple-touch-icon" href="image/apple-touch-icon.png">
+<link rel="apple-touch-icon" sizes="180x180" href="image/apple-touch-icon.png">
+
+<link rel="manifest" href="image/site.webmanifest">
+<meta name="theme-color" content="#ffffff">
+
+
+<body>
+  <div class="container">
+    <div class="form-section">
+
+      <!-- LOGIN -->
+      <section id="login-section">
+        <h1><span class="logo">✔️</span> Habit</h1>
+        <h2>Sign in</h2>
+
+        <!-- FORM LOGIN: con id, action, method y name en inputs -->
+        <form id="loginForm" method="POST" action="php/auth/login.php">
+          <input name="identifier" placeholder="Usuario o Email" required>
+          <input type="password" name="password" placeholder="Contraseña" required>
+          <button type="submit">Entrar</button>
+        </form>
+
+        <p>Don’t have an account?
+          <a href="#" onclick="mostrarSeccion('register')">Sign up</a>
+        </p>
+      </section>
+
+      <!-- REGISTER (aún no conecta; dejamos form separado, sin anidar) -->
+      <section id="register-section" class="hidden">
+        <h1><span class="logo">✔️</span> Habit</h1>
+        <h2>Sign up</h2>
+
+        <form id="registerForm" method="POST" action="php/auth/register.php">
+          <input type="email" name="email" placeholder="Email" required>
+          <input type="text" name="username" placeholder="Usuario" required>
+          <input type="password" name="password" placeholder="Contraseña" required>
+          <button type="submit">Crear cuenta</button>
+        </form>
+
+
+
+
+        <p>Already have an account?
+          <a href="#" onclick="mostrarSeccion('login')">Sign in</a>
+        </p>
+      </section>
+
+    </div>
+
+    <div class="illustration">
+      <img src="assets/img/habit-illustration-men.PNG" alt="Habit Art" />
+    </div>
+  </div>
+
+  <script>
+    function mostrarSeccion(tipo) {
+      document.getElementById("login-section").classList.add("hidden");
+      document.getElementById("register-section").classList.add("hidden");
+      document.getElementById(tipo === "login" ? "login-section" : "register-section").classList.remove("hidden");
+    }
+
+    // === LOGIN AJAX ===
+    const loginForm = document.getElementById('loginForm');
+    if (loginForm) {
+      loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const res = await fetch(loginForm.action, {
+          method: 'POST',
+          body: new FormData(loginForm),
+          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+        const json = await res.json().catch(() => ({ ok: false, message: 'Respuesta inválida' }));
+        if (json.ok) location.href = 'dashboard.php';
+        else alert(json.message);
+      });
+    }
+
+
+
+    const registerForm = document.getElementById('registerForm');
+    registerForm?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const res = await fetch(registerForm.action, {
+        method: 'POST',
+        body: new FormData(registerForm),
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      });
+      const json = await res.json().catch(() => ({ ok: false, message: 'Respuesta inválida' }));
+      if (json.ok) location.href = 'dashboard.php';
+      else alert(json.message);
+    });
+  </script>
+</body>
+
+</html>

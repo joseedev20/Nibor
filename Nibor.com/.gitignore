@@ -1,0 +1,24 @@
+# Dependencias y builds
+node_modules/
+dist/
+
+# Cloudflare/Wrangler local
+.wrangler/
+.dev.vars
+
+# Datos locales sensibles o temporales
+data/
+*.sqlite
+*.sqlite3
+*.db
+
+# Logs locales
+*.log
+*.err.log
+
+# Sistema/editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json

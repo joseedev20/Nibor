@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Mis Hábitos</title>
+  <link rel="stylesheet" href="estilo.css" />
+</head>
+<body>
+  <nav class="sidebar">
+    <div class="menu-top">
+      <span class="titulo-menu">Menú</span>
+      <button class="menu-btn" onclick="toggleMenu()">☰</button>
+    </div>
+    <ul id="menu-list" class="hidden">
+      <li><a href="#">🏠 Crear Habitos</a></li>
+      <li><a href="#">💼 Ver Procesos</a></li>
+      <li class="dropdown">
+        <a href="#">🛠 Proyectos ▼</a>
+        <ul class="submenu">
+          <li><a href="#">Sub Elemento #1</a></li>
+          <li><a href="#">Sub Elemento #2</a></li>
+          <li><a href="#">Sub Elemento #3</a></li>
+        </ul>
+      </li>
+    </ul>
+  </nav>
+
+
+  <script src="script.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+
+</body>
+</html>

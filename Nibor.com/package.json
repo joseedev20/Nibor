@@ -1,0 +1,36 @@
+{
+  "name": "nibor-finanzas",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n worker,client -c yellow,cyan \"npm run worker\" \"npm run client\"",
+    "worker": "wrangler dev --port 8787",
+    "client": "vite",
+    "build": "vite build",
+    "deploy": "npm run build && wrangler deploy",
+    "smoke": "node server/smoke.js",
+    "db:migrate:local": "wrangler d1 migrations apply nibor-finanzas --local",
+    "db:migrate:remote": "wrangler d1 migrations apply nibor-finanzas --remote",
+    "db:seed:local": "wrangler d1 execute nibor-finanzas --local --file scripts/seed_historicos.sql",
+    "db:seed:remote": "wrangler d1 execute nibor-finanzas --remote --file scripts/seed_historicos.sql",
+    "habits:import:local": "node scripts/import_habits_old.mjs",
+    "habits:import:remote": "node scripts/import_habits_old.mjs --remote"
+  },
+  "dependencies": {
+    "echarts": "^6.1.0",
+    "hono": "^4.12.27",
+    "pinia": "^3.0.4",
+    "vue": "^3.5.39",
+    "vue-echarts": "^8.0.1",
+    "vue-router": "^5.1.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.2",
+    "@vitejs/plugin-vue": "^6.0.7",
+    "concurrently": "^10.0.3",
+    "tailwindcss": "^4.3.2",
+    "vite": "^8.1.3",
+    "wrangler": "^4.107.0"
+  }
+}
