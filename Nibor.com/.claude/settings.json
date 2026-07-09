@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(node \"C:\\\\Users\\\\josee\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-josee-OneDrive-Escritorio-Nibor-com\\\\2090ff40-8cac-4a3c-85f5-7b0ab568e1c7\\\\scratchpad\\\\setup-pushover.mjs\")",
+      "Bash(node -e ' *)"
+    ]
+  }
+}

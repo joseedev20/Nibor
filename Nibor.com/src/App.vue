@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useIsDark } from './composables/useIsDark.js'
 
 const nav = [
@@ -22,6 +22,11 @@ const nav = [
 const mounted = ref(false)
 const isDark = useIsDark()
 const sidebarOpen = ref(false)
+const notificationUnread = ref(0)
+const notificationError = ref('')
+let notificationTimer = null
+
+const notificationUnreadLabel = computed(() => notificationUnread.value > 99 ? '99+' : String(notificationUnread.value))
 
 function applyTheme(theme) {
   document.documentElement.classList.toggle('dark', theme === 'dark')
@@ -36,11 +41,41 @@ function closeSidebar() {
   sidebarOpen.value = false
 }
 
+async function notificationRequest(path, options = {}) {
+  const response = await fetch(path, options)
+  const json = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(json.error ?? 'Error de red')
+  return json.data
+}
+
+async function refreshNotifications({ runChecks = true } = {}) {
+  try {
+    if (runChecks) await notificationRequest('/api/notifications/run', { method: 'POST' })
+    const data = await notificationRequest('/api/notifications?limit=1')
+    notificationUnread.value = Number(data.no_leidas ?? 0)
+    notificationError.value = ''
+  } catch (err) {
+    notificationError.value = err.message
+  }
+}
+
+function handleNotificationsChanged() {
+  refreshNotifications({ runChecks: false })
+}
+
 onMounted(() => {
   const savedTheme = localStorage.getItem('theme')
   const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches
   applyTheme(savedTheme === 'dark' || (!savedTheme && prefersDark) ? 'dark' : 'light')
   mounted.value = true
+  window.addEventListener('nibor:notifications-changed', handleNotificationsChanged)
+  refreshNotifications()
+  notificationTimer = window.setInterval(() => refreshNotifications(), 5 * 60 * 1000)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('nibor:notifications-changed', handleNotificationsChanged)
+  if (notificationTimer) window.clearInterval(notificationTimer)
 })
 </script>
 
@@ -55,16 +90,31 @@ onMounted(() => {
         </div>
       </div>
 
-      <button
-        type="button"
-        class="flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-200 text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
-        title="Abrir menú"
-        @click="sidebarOpen = true"
-      >
-        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M4 12h16M4 17h16" />
-        </svg>
-      </button>
+      <div class="flex items-center gap-2">
+        <RouterLink
+          to="/notificaciones"
+          class="relative flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-200 text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+          title="Notificaciones"
+        >
+          <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0a3 3 0 11-6 0m6 0H9" />
+          </svg>
+          <span v-if="notificationUnread > 0" class="absolute -right-1 -top-1 min-w-5 rounded-full bg-rose-600 px-1.5 py-0.5 text-center text-[10px] font-bold leading-none text-white">
+            {{ notificationUnreadLabel }}
+          </span>
+        </RouterLink>
+
+        <button
+          type="button"
+          class="flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-200 text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+          title="Abrir menú"
+          @click="sidebarOpen = true"
+        >
+          <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M4 12h16M4 17h16" />
+          </svg>
+        </button>
+      </div>
     </header>
 
     <div
@@ -95,7 +145,30 @@ onMounted(() => {
         </button>
       </div>
 
-      <nav class="mt-2 flex-1 space-y-1 px-3">
+      <div class="px-3 pb-2">
+        <RouterLink
+          to="/notificaciones"
+          class="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+          exact-active-class="bg-emerald-50 !text-emerald-700 dark:bg-emerald-950 dark:!text-emerald-400"
+          :title="notificationError || 'Notificaciones'"
+          @click="closeSidebar"
+        >
+          <span class="flex min-w-0 items-center gap-3">
+            <svg class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0a3 3 0 11-6 0m6 0H9" />
+            </svg>
+            Notificaciones
+          </span>
+          <span
+            class="shrink-0 rounded-full px-2 py-0.5 text-xs font-bold"
+            :class="notificationUnread > 0 ? 'bg-rose-600 text-white' : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400'"
+          >
+            {{ notificationUnread > 0 ? notificationUnreadLabel : 'Al día' }}
+          </span>
+        </RouterLink>
+      </div>
+
+      <nav class="mt-1 flex-1 space-y-1 px-3">
         <RouterLink
           v-for="item in nav"
           :key="item.to"

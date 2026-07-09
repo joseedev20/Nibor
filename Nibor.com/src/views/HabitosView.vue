@@ -4,6 +4,7 @@ import { formatDate } from '../utils/format.js'
 import VChart from '../charts/setup.js'
 import { useIsDark } from '../composables/useIsDark.js'
 import { chartInk } from '../utils/chartColors.js'
+import NotificationModuleSettings from '../components/NotificationModuleSettings.vue'
 
 const DAYS = [
   { id: 1, label: 'L' },
@@ -515,7 +516,10 @@ onMounted(loadAll)
     <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
       <div>
         <p class="text-sm font-semibold uppercase text-emerald-700 dark:text-emerald-400">Nibor Hábitos</p>
-        <h1 class="mt-1 text-2xl font-bold">Hábitos</h1>
+        <div class="mt-1 flex items-center gap-2">
+          <h1 class="text-2xl font-bold">Hábitos</h1>
+          <NotificationModuleSettings module="habitos" />
+        </div>
         <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Rutinas diarias, rachas e integración con salud y conocimiento.</p>
       </div>
 

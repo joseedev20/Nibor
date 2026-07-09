@@ -1,6 +1,6 @@
 # Estado compartido — Nibor.com
 
-Actualizado: 2026-07-06 21:14 -05:00
+Actualizado: 2026-07-08 21:00 -05:00
 
 ## Decisión activa
 
@@ -37,6 +37,9 @@ Actualizado: 2026-07-06 21:14 -05:00
 | 9 — Préstamos y ahorro Viajes | Codex | Completada | Plataforma `Viajes` creada por migración como `inversion`; préstamos con tabla D1, API `/api/loans`, vista `/prestamos`, menú y smoke |
 | 10 — Nibor Salud | Codex | Completada | MVP de salud con medidas, IMC backend, condiciones, medicamentos, citas, visión, vista `/salud`, API `/api/salud` y smoke |
 | 11 — Nibor Hábitos | Codex | Completada | MVP de hábitos con migración `0015_habits.sql`, API `/api/habits`, importador old idempotente, vista `/habitos`, integraciones Salud/Conocimiento y smoke |
+| 12 — Eventos | Claude | Completada | Calendario personal con migración `0016_events.sql`, API `/api/events`, feed `/api/events/calendar.ics`, vista `/eventos` y smoke Codex |
+| 13 — Vehículos | Claude | Completada | Vehículos con migración `0017`, API `/api/vehicles`, PDFs en R2, vista `/vehiculos`, gastos integrados y smoke Codex |
+| 14 — Notificaciones | Claude + Codex | Completada | Backend/cron/Pushover v2 por Claude; configuración contextual por módulo, campana, `/notificaciones`, smoke y docs por Codex |
 
 ## Bloqueos activos
 
@@ -68,6 +71,11 @@ Actualizado: 2026-07-06 21:14 -05:00
 - Codex completó el takeover de la asignación que Claude no alcanzó a cerrar: migración `0013_loans_and_travel_platform.sql` crea plataforma `Viajes` como `inversion`, tabla `loans`, API `/api/loans`, vista `/prestamos`, navegación lateral y smoke.
 - Codex agregó Nibor Salud: migración `0014_health.sql` con perfil, medidas, condiciones, medicamentos, citas y fórmulas visuales; API `/api/salud` con IMC/categoría calculados en backend; vista `/salud`, menú lateral, smoke y datos locales iniciales del usuario (hipertensión, miopía, astigmatismo y Losartán 50 mg diario 09:00).
 - Codex agregó Nibor Hábitos: migración `0015_habits.sql` con `habits`, `habit_schedule`, `habit_events`, `habit_defer` y `habit_links`; API `/api/habits`; importador `scripts/import_habits_old.mjs` desde `habitos old` solo para `username = nibor` / `user_id = 6`; vista `/habitos`; paneles compactos en `/salud` y `/conocimiento`; smoke y navegador OK. Local quedó con 5 hábitos y 910 eventos históricos importados. Pendiente remoto: ejecutar `npm run db:migrate:remote` y `npm run habits:import:remote` cuando Cloudflare D1 esté listo.
+- Claude completó Eventos: migración `0016_events.sql`, API `/api/events`, feed iCalendar `/api/events/calendar.ics`, vista `/eventos`, nav/router y validación de fecha real. Codex amplió `server/smoke.js` para cubrir CRUD, UID estable e ICS.
+- Claude completó Vehículos: migración `0017`, API `/api/vehicles`, R2 `FILES` para PDFs, vista `/vehiculos`, gastos integrados en `movements.vehicle_id` y nav/router. Codex amplió `server/smoke.js` para cubrir documentos, estados, PDF roundtrip, gasto integrado y bloqueo de borrado con gastos.
+- Claude completó backend de Notificaciones: migraciones `0018_notifications.sql` y `0019_notification_prefs.sql`, API `/api/notifications`, motor `runChecks`, cron en `wrangler.toml` y Pushover. Codex completó frontend: campana global en `App.vue`, ruta/vista `/notificaciones`, bandeja, marcar leída/todas, configuración v2 con push/prioridad/sonido por regla, silencio, pausa, resumen diario, prueba push, smoke y README.
+- Codex agregó Notificaciones v3 por pedido del usuario: migración `0020_notification_module_settings.sql`, botón de campana/configuración contextual en `/habitos`, `/vehiculos`, `/eventos` y `/suscripciones`; modal reutilizable `NotificationModuleSettings.vue`; hábitos con franja y repetición; vehículos con preset 180/90/30/15/8/3/0; cron Cloudflare cada 15 minutos para que las franjas funcionen.
+- Codex agregó Notificaciones v4 para Hábitos: migración `0021_habit_notification_windows.sql`, `habitos_franjas` como JSON en `notification_settings`, múltiples franjas por días con preset L-V mañana/tarde y S-D todo el día; backend filtra por día/hora/minuto y mantiene dedupe por franja.
 - Para smoke local: levantar Wrangler y correr `npm run smoke`. Si se usa otro puerto, definir `SMOKE_BASE_URL`.
 
 ## Notas de arquitectura
@@ -82,3 +90,6 @@ Actualizado: 2026-07-06 21:14 -05:00
 - `loans` guarda préstamos personales del usuario; el resumen de pendiente/devuelto se calcula en backend y no afecta patrimonio ni rentabilidad.
 - `health_*` guarda datos sensibles de salud del usuario. No se deben poner datos personales de salud en migraciones; cargar/editar por API o UI. El IMC es una referencia adulta calculada en backend, no un diagnóstico médico.
 - `habit_events` es la fuente de verdad para hábitos y para las proyecciones hacia Salud/Conocimiento. No migrar login, usuarios, emails, hashes, sesiones ni credenciales de la app PHP vieja; el sistema nuevo asume usuario único Nibor.
+- `events` alimenta el módulo Eventos y el feed ICS. El UID debe permanecer estable al editar para que calendarios suscritos actualicen correctamente.
+- `vehicles` y `vehicle_items` guardan metadatos; los PDFs viven en R2 (`FILES`, bucket `nibor-files`). En remoto hay que crear el bucket con `npx wrangler r2 bucket create nibor-files` antes del deploy.
+- `notifications` usa `dedupe_key` para no duplicar reglas del cron. Pushover requiere `pushover_user` y `pushover_token` guardados en settings; sin llaves, solo funciona la bandeja in-app. La tabla guarda prioridad y sonido por notificación; `notification_settings` guarda la entrega por regla, silencio, pausa, resumen diario, franjas múltiples de hábitos, programación de vehículos y repetición de vencidas.

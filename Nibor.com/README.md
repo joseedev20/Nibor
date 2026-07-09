@@ -39,9 +39,11 @@ Hacer una sola vez:
 ```powershell
 npx wrangler login
 npx wrangler d1 create nibor-finanzas
+npx wrangler r2 bucket create nibor-files
 ```
 
 Copiar el `database_id` que devuelve Cloudflare y reemplazarlo en `wrangler.toml`.
+El bucket `nibor-files` queda conectado al binding `FILES` para PDFs de Vehículos.
 
 Aplicar esquema y datos históricos remotos:
 
@@ -56,9 +58,19 @@ Desplegar Worker + assets de Vite:
 npm run deploy
 ```
 
+## Notificaciones push con Pushover
+
+1. Crear cuenta en [pushover.net](https://pushover.net/).
+2. Copiar el `User Key` del home de Pushover.
+3. Crear una Application en Pushover y copiar su `API Token`.
+4. En Nibor, abrir `/notificaciones`, pegar `User Key` y `API Token`, activar push y usar `Enviar prueba`.
+
+Las notificaciones in-app funcionan sin Pushover. En `/notificaciones` puedes activar push por regla, elegir prioridad/sonido, definir horario de silencio, pausar temporalmente la entrega y agrupar novedades en resumen diario. También puedes abrir la campana de configuración dentro de Hábitos, Vehículos, Eventos y Suscripciones para ajustar solo ese módulo. Hábitos soporta múltiples franjas por días, por ejemplo L-V mañana/tarde y S-D todo el día. En producción, Cloudflare ejecuta el motor cada 15 minutos y el backend decide si corresponde avisar según la regla de cada módulo.
+
 ## Notas de datos
 
 - D1 remoto es la fuente de verdad en producción.
+- R2 `nibor-files` guarda PDFs adjuntos de Vehículos; D1 solo guarda metadatos del archivo.
 - Los históricos Ene-Jun 2026 están en `scripts/seed_historicos.sql`.
 - `saldo_final = NULL` significa mes pendiente.
 - Ganancia, rentabilidad y totales calculados viven en el backend.

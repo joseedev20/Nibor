@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 const routes = [
   { path: '/', name: 'dashboard', component: () => import('./views/DashboardView.vue'), meta: { title: 'Resumen' } },
+  { path: '/notificaciones', name: 'notificaciones', component: () => import('./views/NotificacionesView.vue'), meta: { title: 'Notificaciones' } },
   { path: '/musica', name: 'musica', component: () => import('./views/MusicaView.vue'), meta: { title: 'Música' } },
   { path: '/conocimiento', name: 'conocimiento', component: () => import('./views/ConocimientoView.vue'), meta: { title: 'Conocimiento' } },
   { path: '/habitos', name: 'habitos', component: () => import('./views/HabitosView.vue'), meta: { title: 'Hábitos' } },

@@ -10,14 +10,14 @@ Nibor.com/
 ├── server/             # Cloudflare Worker API
 │   ├── index.js        # Worker/Hono, monta /api/*
 │   ├── db.js           # helpers pequeños para consultas D1 y mapeo de errores
-│   └── routes/         # un archivo por recurso: platforms.js, snapshots.js, movements.js, subscriptions.js, goals.js, music.js, knowledge.js, habits.js, salud.js, summary.js
+│   └── routes/         # un archivo por recurso: platforms.js, snapshots.js, movements.js, subscriptions.js, goals.js, music.js, knowledge.js, habits.js, events.js, vehicles.js, notifications.js, salud.js, summary.js
 ├── migrations/         # migraciones D1. 0001_initial.sql crea esquema y seed inicial
 ├── src/                # frontend Vue 3
 │   ├── main.js
 │   ├── App.vue         # layout: sidebar + <RouterView>
 │   ├── router.js
 │   ├── stores/         # Pinia: useFinanzasStore, etc.
-│   ├── views/          # DashboardView, InversionesView, MetasView, MusicaView, ConocimientoView, HabitosView, SaludView, GastosView, SuscripcionesView, CierreView, ConfigView
+│   ├── views/          # DashboardView, InversionesView, MetasView, MusicaView, ConocimientoView, HabitosView, EventosView, VehiculosView, NotificacionesView, SaludView, GastosView, SuscripcionesView, CierreView, ConfigView
 │   ├── components/     # componentes reutilizables (StatCard, MonthPicker, PlatformTable, …)
 │   └── utils/format.js # formato de moneda y fechas (usar SIEMPRE estas funciones)
 ├── wrangler.toml       # binding D1: DB -> nibor-finanzas
@@ -41,11 +41,13 @@ Nibor.com/
 
 - Base local de API: `http://localhost:8787/api` cuando corre Wrangler. En frontend usar rutas relativas `/api/*` y proxy de Vite en desarrollo.
 - REST estándar: `GET/POST /api/snapshots`, `PUT/DELETE /api/snapshots/:id`, etc.
-- Módulos no financieros también siguen REST: `/api/music/songs`, `/api/knowledge/items`, `/api/habits`, `/api/salud`, etc.
+- Módulos no financieros también siguen REST: `/api/music/songs`, `/api/knowledge/items`, `/api/habits`, `/api/events`, `/api/vehicles`, `/api/notifications`, `/api/salud`, etc.
 - Respuestas JSON planas: `{ data: ... }` en éxito, `{ error: "mensaje" }` con status 4xx/5xx en fallo.
 - **Los campos calculados (ganancia, rentabilidad, saldo_total_inicial) se calculan SOLO en el backend** y se devuelven en las respuestas. El frontend nunca los recalcula.
 - En Salud, el IMC y su categoría se calculan SOLO en el backend y se devuelven en `/api/salud`; el frontend solo los presenta.
 - En Hábitos, progreso, rachas, heatmap, conteos del día e integraciones se calculan SOLO en el backend y se devuelven en `/api/habits`; el frontend solo los presenta.
+- En Vehículos, estado de documentos y días restantes se calculan SOLO en el backend; PDFs se guardan en R2 (`FILES`) y la UI nunca guarda archivos en D1.
+- En Notificaciones, las reglas, deduplicación, prioridad/sonido por regla, franjas múltiples de hábitos por días, avisos programados de vehículos, silencio, pausa y envío Pushover se ejecutan SOLO en backend/cron; el frontend solo invoca `/run`, muestra la bandeja y administra settings por módulo.
 - Hábitos es de usuario único (`Nibor`): no reintroducir login, sesiones, tabla `users` ni credenciales desde la app PHP vieja.
 - Un `snapshot` con `saldo_final = NULL` es un mes pendiente: la API lo excluye de totales y rentabilidades (no lo trata como 0).
 - Todas las consultas D1 deben usar statements preparados (`env.DB.prepare(...).bind(...)`) salvo migraciones.

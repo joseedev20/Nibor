@@ -11,6 +11,7 @@ import knowledge from './routes/knowledge.js'
 import loans from './routes/loans.js'
 import movements from './routes/movements.js'
 import music from './routes/music.js'
+import notifications, { runChecks } from './routes/notifications.js'
 import platforms from './routes/platforms.js'
 import snapshots from './routes/snapshots.js'
 import subscriptions from './routes/subscriptions.js'
@@ -38,6 +39,7 @@ app.route('/knowledge', knowledge)
 app.route('/loans', loans)
 app.route('/vehicles', vehicles)
 app.route('/music', music)
+app.route('/notifications', notifications)
 app.route('/summary', summary)
 app.route('/close-month', closeMonth)
 
@@ -47,4 +49,10 @@ app.onError((err, c) => {
   return c.json({ error: err.message ?? 'Error interno' }, 500)
 })
 
-export default app
+// fetch = API normal; scheduled = cron de Cloudflare (notificaciones + Pushover)
+export default {
+  fetch: app.fetch,
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runChecks(env).catch((err) => console.error('cron notificaciones:', err)))
+  },
+}

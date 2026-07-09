@@ -16,6 +16,11 @@ database_name = "nibor-finanzas"
 database_id = "00000000-0000-0000-0000-000000000000"
 migrations_dir = "migrations"
 
+# Cron de notificaciones frecuente: las reglas del backend deciden si toca avisar.
+# Solo corre en producción; en local usar POST /api/notifications/run.
+[triggers]
+crons = ["*/15 * * * *"]
+
 # Archivos adjuntos (PDFs de SOAT, tecnomecánica, etc.).
 # Local: wrangler dev lo simula solo. Antes del primer deploy remoto:
 # `npx wrangler r2 bucket create nibor-files`

@@ -88,6 +88,24 @@ Nibor.com es una app madre. Finanzas queda como el primer módulo productivo; lo
    - Progreso calculado en backend: rachas, heatmap, porcentajes semanal/mensual/trimestral/semestral/anual
    - Integración por eventos con Salud y Conocimiento: Losartán, ejercicio, higiene, lectura e inglés
    - Primer MVP en `/habitos`, con API `/api/habits` e importador desde `habitos old`
+13. **Eventos**:
+   - Calendario personal con eventos de todo el día o con hora/duración
+   - Feed iCalendar estable para suscripción en iPhone mediante `/api/events/calendar.ics`
+   - UID estable, `SEQUENCE` por edición y horario America/Bogota convertido a UTC
+   - Primer MVP en `/eventos`, con API `/api/events`
+14. **Vehículos**:
+   - Control de carro/moto, documentos, SOAT, técnico mecánica, vencimientos y PDFs adjuntos
+   - Estados de documentos calculados en backend: vigente, por vencer, vencida y por configurar
+   - PDFs guardados en Cloudflare R2 con binding `FILES`; gastos integrados como `movements`
+   - Primer MVP en `/vehiculos`, con API `/api/vehicles`
+15. **Notificaciones**:
+   - Centro in-app de notificaciones para suscripciones, hábitos, vehículos y eventos
+   - Campana global con badge de no leídas; vista `/notificaciones` para bandeja y configuración general
+   - Configuración contextual desde cada módulo con botón de campana: Suscripciones, Hábitos, Vehículos y Eventos
+   - Push opcional al celular vía Pushover usando `pushover_user` y `pushover_token`
+   - Entrega configurable por regla: push sí/no, prioridad silenciosa/normal/alta, sonido Pushover, silencio horario, pausa temporal y resumen diario
+   - Hábitos permite múltiples franjas de recordatorios por días de semana, y Vehículos permite avisos programados tipo 180/90/30/15/8/3/0 días antes
+   - Motor idempotente ejecutable por cron Cloudflare y por `POST /api/notifications/run`
 
 ## 3. Modelo de datos (D1 / SQLite semantics)
 
@@ -98,7 +116,8 @@ platforms        (id, nombre, color, orden, activa, tipo 'inversion'|'fondo')
 snapshots        (id, platform_id, anio, mes, saldo_inicial, aporte, retiros, saldo_final)
                  -- UNIQUE(platform_id, anio, mes). saldo_final NULL = mes pendiente
 categories       (id, nombre, tipo 'gasto'|'ingreso', icono, color)
-movements        (id, fecha, tipo 'gasto'|'ingreso', categoria_id, descripcion, monto, subscription_id NULL)
+movements        (id, fecha, tipo 'gasto'|'ingreso', categoria_id, descripcion, monto, subscription_id NULL, vehicle_id NULL)
+                 -- vehicle_id agregado en migración 0017 para gastos de vehículos integrados a finanzas
 subscriptions    (id, nombre, monto, moneda, monto_original, tasa_cambio, margen_tasa_pct, tasa_cambio_fecha, dia_cobro, categoria_id, activa, tipo 'gasto'|'ingreso', automatica, card_id)
                  -- tipo agregado en migración 0002: recurrentes de ingreso (salario, arriendo recibido)
                  -- moneda/cambio agregados en migración 0006: monto queda como COP estimado
@@ -139,6 +158,14 @@ habit_events     (id, old_event_id, habit_id, event_time, source, note, created_
 habit_defer      (habit_id, day_date, defer_rank, updated_at)
 habit_links      (id, habit_id, module, behavior, target_id, target_label, created_at, updated_at)
                  -- agregado en migración 0015_habits.sql para Nibor Hábitos; old_id/old_event_id hacen idempotente la migración desde la app vieja
+events           (id, titulo, descripcion, fecha, hora, duracion_min, lugar, recordatorio_min, uid, created_at, updated_at)
+                 -- agregado en migración 0016_events.sql; uid UNIQUE estable para feeds iCalendar
+vehicles         (id, nombre, tipo, placa, color, activa, created_at, updated_at)
+vehicle_items    (id, vehicle_id, nombre, vence, notas, file_key, file_name, file_size, created_at, updated_at)
+                 -- agregado en migración 0017; archivos PDF viven en R2 con binding FILES
+notifications    (id, tipo, titulo, mensaje, fecha, dedupe_key, leida, push_enviada, prioridad, sonido, created_at)
+notification_settings (clave, valor, updated_at)
+                 -- agregado en migración 0018 y ampliado en 0019/0020/0021; settings incluye push/prioridad/sonido por regla, silencio, pausa, resumen diario, franjas de hábitos por días y programación de vehículos
 ```
 
 **Fórmulas (calculadas en el backend, una sola fuente de verdad):**
@@ -160,6 +187,9 @@ habit_links      (id, habit_id, module, behavior, target_id, target_label, creat
 - `GET/POST/PUT/DELETE /api/loans` administra préstamos personales y devuelve resumen calculado; `POST /api/loans/:id/return` marca un préstamo como devuelto.
 - `GET /api/salud` devuelve perfil, medidas, condiciones, medicamentos, citas, visión y resumen calculado; subrutas REST: `/profile`, `/measurements`, `/conditions`, `/medications`, `/appointments`, `/vision`.
 - `GET/POST/PUT/DELETE /api/habits` administra hábitos; subrutas: `/today`, `/:id/check`, `/:id/defer`, `/reorder`, `/progress`, `/activity?module=salud|knowledge`. La migración vieja se ejecuta con `npm run habits:import:local`.
+- `GET/POST/PUT/DELETE /api/events` administra eventos; `GET /api/events/calendar.ics` expone el feed iCalendar para suscripción.
+- `GET/POST/PUT/DELETE /api/vehicles` administra vehículos; subrutas para documentos, PDF en R2 y gastos: `/items`, `/items/:id/file`, `/:id/gastos`.
+- `GET /api/notifications` lista notificaciones y `no_leidas`; subrutas: `/run`, `/:id/read`, `/read-all`, `/settings`, `/test-push`. `POST /api/notifications/run` acepta `hora`/`minuto` opcionales para smoke y devuelve `push_enviadas`, `push_retenidas`, `en_silencio` y `pausado`.
 
 ## 4. Fases de trabajo
 
@@ -177,6 +207,9 @@ habit_links      (id, habit_id, module, behavior, target_id, target_label, creat
 | 9 | Préstamos personales y ahorro Viajes | Codex |
 | 10 | Nibor Salud MVP: medidas, IMC, condiciones, medicamentos, citas y visión | Codex |
 | 11 | Nibor Hábitos MVP: seguimiento diario, progreso, integraciones e importador old | Codex |
+| 12 | Eventos MVP: calendario personal e iCalendar | Claude |
+| 13 | Vehículos MVP: documentos, R2 y gastos integrados | Claude |
+| 14 | Notificaciones: backend/cron por Claude, campana/vista/config/smoke/docs por Codex | Claude + Codex |
 
 Detalle de tareas: `TAREAS_CLAUDE.md` y `TAREAS_CODEX.md` en esta carpeta.
 Reglas compartidas: `CONVENCIONES.md`. **Ambos agentes deben leer CONVENCIONES.md antes de escribir código.**

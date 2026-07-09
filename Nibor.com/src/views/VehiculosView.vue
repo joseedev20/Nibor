@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { formatCOP, formatDate } from '../utils/format.js'
+import NotificationModuleSettings from '../components/NotificationModuleSettings.vue'
 
 const now = new Date()
 const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
@@ -282,7 +283,10 @@ onMounted(loadVehicles)
     <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
       <div>
         <p class="text-sm font-semibold uppercase text-emerald-700 dark:text-emerald-400">Nibor Vehículos</p>
-        <h1 class="mt-1 text-2xl font-bold">Tu carro y tu moto al día</h1>
+        <div class="mt-1 flex items-center gap-2">
+          <h1 class="text-2xl font-bold">Tu carro y tu moto al día</h1>
+          <NotificationModuleSettings module="vehiculos" />
+        </div>
         <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">SOAT, tecnomecánica, documentos en PDF y gastos conectados a tus finanzas.</p>
       </div>
 

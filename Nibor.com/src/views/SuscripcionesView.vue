@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { formatCOP, monthName } from '../utils/format.js'
+import NotificationModuleSettings from '../components/NotificationModuleSettings.vue'
 
 const now = new Date()
 const selectedYear = ref(now.getFullYear())
@@ -326,7 +327,10 @@ onMounted(loadData)
   <div>
     <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
       <div>
-        <h1 class="text-2xl font-bold">Suscripciones y fijos</h1>
+        <div class="flex items-center gap-2">
+          <h1 class="text-2xl font-bold">Suscripciones y fijos</h1>
+          <NotificationModuleSettings module="suscripciones" />
+        </div>
         <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Todo lo que entra y sale cada mes: suscripciones, recibos fijos, salario, arriendos…</p>
       </div>
 

@@ -1,5 +1,7 @@
 const baseUrl = process.env.SMOKE_BASE_URL ?? 'http://127.0.0.1:8787/api'
 const smokeYear = 2099
+const now = new Date()
+const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
 async function request(path, options = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -83,9 +85,19 @@ async function cleanupSmokeData(platformId) {
     await del(`/music/songs/${song.id}`)
   }
 
+  const events = await request('/events')
+  for (const event of events.filter((item) => String(item.titulo).startsWith('Smoke '))) {
+    await del(`/events/${event.id}`)
+  }
+
   const movements = await request(`/movements?anio=${smokeYear}`)
   for (const movement of movements) {
     await del(`/movements/${movement.id}`)
+  }
+
+  const vehicles = await request('/vehicles')
+  for (const vehicle of vehicles.filter((item) => String(item.nombre).startsWith('Smoke '))) {
+    await del(`/vehicles/${vehicle.id}`)
   }
 
   const goals = await request('/goals')
@@ -441,8 +453,11 @@ async function run() {
 
   const progress = await request(`/habits/progress?date=${smokeYear}-07-01`)
   const progressSmoke = progress.items.find((habit) => habit.id === smokeHabit.id)
-  if (!progressSmoke || progressSmoke.done_today !== 2 || progressSmoke.heatmap.length !== 30) {
+  if (!progressSmoke || progressSmoke.done_today !== 2 || progressSmoke.heatmap.length !== 182) {
     throw new Error('Progreso de habito smoke no incluyo conteos/heatmap')
+  }
+  if (progress.daily.length !== 182 || progress.weekly_series.length !== 12) {
+    throw new Error('Progreso global de habitos no incluyo series diaria/semanal')
   }
 
   const healthHabitActivity = await request(`/habits/activity?module=salud&behavior=exercise_done&from=${smokeYear}-07-01&to=${smokeYear}-07-01`)
@@ -554,9 +569,235 @@ async function run() {
     throw new Error('Validacion de estatura en salud no devolvio el error esperado')
   }
 
+  const event = await post('/events', {
+    titulo: `Smoke evento ${Date.now()}`,
+    descripcion: 'Evento smoke',
+    fecha: `${smokeYear}-08-01`,
+    hora: '09:00',
+    duracion_min: 45,
+    lugar: 'Smoke lugar',
+    recordatorio_min: 15,
+  })
+  if (!event.id || !event.uid) throw new Error('No se creo evento smoke con UID')
+
+  const editedEvent = await put(`/events/${event.id}`, {
+    titulo: `${event.titulo} editado`,
+    fecha: `${smokeYear}-08-02`,
+    hora: null,
+    duracion_min: 60,
+    recordatorio_min: null,
+  })
+  if (editedEvent.uid !== event.uid) throw new Error('UID de evento no se mantuvo estable al editar')
+  if (editedEvent.hora !== null) throw new Error('Evento todo el dia no guardo hora null')
+
+  const invalidEvent = await expectFailure('/events', {
+    method: 'POST',
+    body: JSON.stringify({
+      titulo: `Smoke evento invalido ${Date.now()}`,
+      fecha: `${smokeYear}-13-99`,
+    }),
+  })
+  if (!String(invalidEvent.error ?? '').includes('fecha real')) {
+    throw new Error('Validacion de fecha real en eventos no devolvio error esperado')
+  }
+
+  const icsResponse = await fetch(`${baseUrl}/events/calendar.ics`)
+  const icsText = await icsResponse.text()
+  if (!icsResponse.ok || !icsText.includes('BEGIN:VCALENDAR') || !icsText.includes(editedEvent.uid)) {
+    throw new Error('Feed ICS no incluyo calendario/evento smoke')
+  }
+
+  const notificationEvent = await post('/events', {
+    titulo: `Smoke notificacion ${Date.now()}`,
+    fecha: todayIso,
+  })
+  if (!notificationEvent.id) throw new Error('No se creo evento smoke para notificaciones')
+
+  const vehicle = await post('/vehicles', {
+    nombre: `Smoke vehiculo ${Date.now()}`,
+    tipo: 'carro',
+    placa: 'SMK123',
+    color: '#2563eb',
+  })
+  if (!vehicle.id || vehicle.items.length < 2) throw new Error('Vehiculo smoke no creo items por defecto')
+
+  const vehicleItem = vehicle.items.find((item) => item.nombre.includes('SOAT')) ?? vehicle.items[0]
+  const editedItem = await put(`/vehicles/items/${vehicleItem.id}`, {
+    nombre: vehicleItem.nombre,
+    vence: `${smokeYear}-07-15`,
+    notas: 'Smoke documento',
+  })
+  if (editedItem.estado !== 'vigente') throw new Error(`Estado de documento vehicular inesperado: ${editedItem.estado}`)
+
+  const dueItem = await post(`/vehicles/${vehicle.id}/items`, {
+    nombre: 'Smoke vencimiento hoy',
+    vence: todayIso,
+    notas: 'Smoke notificacion vehiculo',
+  })
+  if (dueItem.estado !== 'por_vencer' || dueItem.dias_restantes !== 0) {
+    throw new Error('Documento vehicular para notificacion no quedo venciendo hoy')
+  }
+
+  const nonPdfUpload = await expectFailure(`/vehicles/items/${vehicleItem.id}/file`, {
+    method: 'POST',
+    headers: { 'content-type': 'text/plain' },
+    body: 'no pdf',
+  })
+  if (!String(nonPdfUpload.error ?? '').includes('PDF')) throw new Error('Validacion de PDF vehicular no fallo como esperaba')
+
+  const pdfBytes = new Uint8Array([37, 80, 68, 70, 45, 49, 46, 52, 10, 37, 226, 227, 207, 211, 10])
+  const uploadResponse = await fetch(`${baseUrl}/vehicles/items/${vehicleItem.id}/file`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/pdf',
+      'x-file-name': encodeURIComponent('smoke.pdf'),
+    },
+    body: pdfBytes,
+  })
+  const uploadJson = await uploadResponse.json()
+  if (!uploadResponse.ok) throw new Error(`Upload PDF vehicular fallo: ${JSON.stringify(uploadJson)}`)
+  if (uploadJson.data.file_name !== 'smoke.pdf') throw new Error('PDF vehicular no guardo el nombre esperado')
+
+  const downloadResponse = await fetch(`${baseUrl}/vehicles/items/${vehicleItem.id}/file`)
+  const downloaded = await downloadResponse.arrayBuffer()
+  if (!downloadResponse.ok || downloaded.byteLength !== pdfBytes.byteLength) {
+    throw new Error('Descarga PDF vehicular no hizo roundtrip binario')
+  }
+
+  await del(`/vehicles/items/${vehicleItem.id}/file`)
+
+  const vehicleExpense = await post(`/vehicles/${vehicle.id}/gastos`, {
+    concepto: 'Smoke mantenimiento',
+    monto: 321000,
+    fecha: `${smokeYear}-07-20`,
+  })
+  if (vehicleExpense.vehicle_id !== vehicle.id) throw new Error('Gasto vehicular no quedo enlazado al vehiculo')
+
+  const blockedVehicleDelete = await expectFailure(`/vehicles/${vehicle.id}`, { method: 'DELETE' })
+  if (!String(blockedVehicleDelete.error ?? '').includes('gastos')) {
+    throw new Error('Borrado de vehiculo con gastos no quedo bloqueado')
+  }
+
+  const originalNotificationSettings = await request('/notifications/settings')
+  const smokeSettings = await put('/notifications/settings', {
+    ...originalNotificationSettings,
+    push_habilitado: '0',
+    pushover_user: '',
+    pushover_token: '',
+    regla_suscripciones: '1',
+    regla_habitos: '1',
+    regla_vehiculos: '1',
+    regla_eventos: '1',
+    vehiculos_umbrales: '180,90,30,15,8,3,0',
+    eventos_dias_antes: '1',
+    habitos_hora: '0',
+    habitos_inicio: '0',
+    habitos_fin: '23',
+    habitos_cada_min: '60',
+    habitos_franjas: JSON.stringify([
+      { id: 'smoke-manana', days: [1, 2, 3, 4, 5], start: '06:00', end: '07:00' },
+      { id: 'smoke-tarde', days: [1, 2, 3, 4, 5], start: '16:00', end: '23:59' },
+      { id: 'smoke-finde', days: [6, 0], start: '00:00', end: '23:59' },
+      { id: 'smoke-todos', days: [0, 1, 2, 3, 4, 5, 6], start: '00:00', end: '23:59' },
+    ]),
+    push_suscripciones: '1',
+    push_habitos: '1',
+    push_vehiculos: '1',
+    push_eventos: '1',
+    prioridad_suscripciones: '0',
+    prioridad_habitos: '-1',
+    prioridad_vehiculos: '1',
+    prioridad_eventos: '0',
+    sonido_suscripciones: '',
+    sonido_habitos: 'none',
+    sonido_vehiculos: 'bike',
+    sonido_eventos: 'pushover',
+    silencio_inicio: '22',
+    silencio_fin: '7',
+    pausado_hasta: '',
+    resumen_diario: '0',
+    vencida_recordar_cada: '3',
+  })
+  if (
+    smokeSettings.push_habilitado !== '0'
+    || smokeSettings.regla_eventos !== '1'
+    || smokeSettings.push_vehiculos !== '1'
+    || smokeSettings.prioridad_vehiculos !== '1'
+    || smokeSettings.sonido_vehiculos !== 'bike'
+    || smokeSettings.silencio_inicio !== '22'
+    || smokeSettings.habitos_inicio !== '0'
+    || smokeSettings.habitos_fin !== '23'
+    || smokeSettings.habitos_cada_min !== '60'
+    || !String(smokeSettings.habitos_franjas ?? '').includes('smoke-manana')
+    || !String(smokeSettings.habitos_franjas ?? '').includes('23:59')
+    || smokeSettings.vehiculos_umbrales !== '180,90,30,15,8,3,0'
+  ) {
+    throw new Error('Settings de notificaciones no guardaron valores smoke')
+  }
+
+  const invalidNotificationSetting = await expectFailure('/notifications/settings', {
+    method: 'PUT',
+    body: JSON.stringify({ clave_invalida: '1' }),
+  })
+  if (!String(invalidNotificationSetting.error ?? '').includes('Clave desconocida')) {
+    throw new Error('Settings de notificaciones no rechazaron clave desconocida')
+  }
+
+  const testPushFailure = await expectFailure('/notifications/test-push', { method: 'POST' })
+  if (!String(testPushFailure.error ?? '').includes('Configura primero')) {
+    throw new Error('test-push sin llaves no devolvio el error esperado')
+  }
+
+  const notificationRun = await post('/notifications/run', { hora: 23, minuto: 0 })
+  if (
+    !Number.isInteger(notificationRun.nuevas)
+    || !Number.isInteger(notificationRun.push_enviadas)
+    || !Number.isInteger(notificationRun.push_retenidas)
+    || typeof notificationRun.en_silencio !== 'boolean'
+    || typeof notificationRun.pausado !== 'boolean'
+  ) {
+    throw new Error('Run de notificaciones no devolvio resumen esperado')
+  }
+  if (notificationRun.en_silencio !== true || notificationRun.pausado !== false) {
+    throw new Error('Run de notificaciones no respeto silencio/pausa smoke')
+  }
+
+  const pausedSettings = await put('/notifications/settings', {
+    ...smokeSettings,
+    pausado_hasta: '2099-12-31T23:59',
+  })
+  if (pausedSettings.pausado_hasta !== '2099-12-31T23:59') {
+    throw new Error('Settings de notificaciones no guardaron pausa smoke')
+  }
+  const pausedRun = await post('/notifications/run', { hora: 10, minuto: 0 })
+  if (pausedRun.pausado !== true || !Number.isInteger(pausedRun.push_retenidas)) {
+    throw new Error('Run de notificaciones no devolvio pausa/retencion smoke')
+  }
+  await put('/notifications/settings', smokeSettings)
+
+  const notificationList = await request('/notifications')
+  if (!notificationList.notificaciones.some((item) => String(item.titulo).includes(notificationEvent.titulo))) {
+    throw new Error('Notificaciones no incluyeron evento smoke de hoy')
+  }
+  if (!notificationList.notificaciones.some((item) => item.tipo === 'vehiculo' && String(item.titulo).includes('Smoke'))) {
+    throw new Error('Notificaciones no incluyeron vencimiento vehicular smoke')
+  }
+
+  const unreadNotification = notificationList.notificaciones.find((item) => Number(item.leida) === 0)
+  if (unreadNotification) {
+    const readNotification = await post(`/notifications/${unreadNotification.id}/read`, {})
+    if (readNotification.id !== unreadNotification.id) throw new Error('Marcar notificacion leida no devolvio ID esperado')
+  }
+
+  await post('/notifications/read-all', {})
+  const readAllList = await request('/notifications')
+  if (readAllList.no_leidas !== 0) throw new Error('read-all de notificaciones no limpio no_leidas')
+
+  await put('/notifications/settings', originalNotificationSettings)
+
   await cleanupSmokeData(platform.id)
 
-  console.log('Endpoints OK: platforms, categories, cards, snapshots, movements, subscriptions/apply, summary, close-month, goals, music, knowledge, habits, loans, salud')
+  console.log('Endpoints OK: platforms, categories, cards, snapshots, movements, subscriptions/apply, summary, close-month, goals, music, knowledge, habits, loans, salud, events, vehicles, notifications')
 }
 
 run().catch((error) => {
