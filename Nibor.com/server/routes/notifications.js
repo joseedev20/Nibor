@@ -37,6 +37,12 @@ function nowBogota() {
   return { hoy: date.toISOString().slice(0, 10), hora: date.getUTCHours(), minuto: date.getUTCMinutes() }
 }
 
+function isRealIsoDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value ?? ''))) return false
+  const date = new Date(`${value}T00:00:00Z`)
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+}
+
 function addDaysIso(fecha, days) {
   const [y, m, d] = fecha.split('-').map(Number)
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)
@@ -188,7 +194,7 @@ function habitSlot(settings, hoy, hora, minuto) {
     const elapsed = (current - window.start + 1440) % 1440
     const slot = Math.floor(elapsed / interval)
     const slotStart = (window.start + slot * interval) % 1440
-    if (current === slotStart) return `${window.id}-${slotStart}`
+    return `${window.id}-${slotStart}`
   }
   return null
 }
@@ -385,7 +391,9 @@ async function deliverPush(db, settings, hoy, hora) {
 export async function runChecks(env, overrides = {}) {
   const db = env.DB
   const settings = await getSettings(db)
-  const { hoy, hora, minuto } = nowBogota()
+  const now = nowBogota()
+  const hoy = overrides.fecha ?? now.hoy
+  const { hora, minuto } = now
   const horaEfectiva = overrides.hora ?? hora
   const minutoEfectivo = overrides.minuto ?? minuto
 
@@ -421,15 +429,24 @@ export async function runChecks(env, overrides = {}) {
 
 notifications.get('/', async (c) => {
   const limit = toInteger(c.req.query('limit'), 50)
+  const fecha = c.req.query('fecha')
+  const hasFecha = fecha !== undefined && fecha !== ''
+  if (hasFecha && !isRealIsoDate(fecha)) return fail(c, 'fecha debe ser YYYY-MM-DD real')
+  const params = hasFecha ? [fecha, Math.min(Math.max(limit, 1), 200)] : [Math.min(Math.max(limit, 1), 200)]
   const rows = await all(
     c.env.DB,
     `SELECT id, tipo, titulo, mensaje, fecha, leida, push_enviada, created_at
      FROM notifications
+     ${hasFecha ? 'WHERE fecha = ?' : ''}
      ORDER BY fecha DESC, id DESC
      LIMIT ?`,
-    Math.min(Math.max(limit, 1), 200),
+    ...params,
   )
-  const unread = await first(c.env.DB, 'SELECT COUNT(*) AS n FROM notifications WHERE leida = 0')
+  const unread = await first(
+    c.env.DB,
+    `SELECT COUNT(*) AS n FROM notifications WHERE leida = 0${hasFecha ? ' AND fecha = ?' : ''}`,
+    ...(hasFecha ? [fecha] : []),
+  )
   return ok(c, { notificaciones: rows, no_leidas: Number(unread?.n ?? 0) })
 })
 
@@ -438,6 +455,10 @@ notifications.post('/run', async (c) => {
   const overrides = {}
   if (body.hora !== undefined) overrides.hora = toInteger(body.hora, undefined)
   if (body.minuto !== undefined) overrides.minuto = toInteger(body.minuto, undefined)
+  if (body.fecha !== undefined) {
+    if (!isRealIsoDate(body.fecha)) return fail(c, 'fecha debe ser YYYY-MM-DD real')
+    overrides.fecha = body.fecha
+  }
   return ok(c, await runChecks(c.env, overrides))
 })
 

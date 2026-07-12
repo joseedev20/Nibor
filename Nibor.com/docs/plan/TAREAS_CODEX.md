@@ -78,12 +78,24 @@ Notas técnicas para Fase 1:
 - [x] 2026-07-08 19:38 Notificaciones v2 por handoff de Claude: `NotificacionesView` rediseña Configuración con tarjetas por regla, push/prioridad/sonido, Entrega con silencio/pausa/resumen/vencidas y Pushover; `server/smoke.js` valida el contrato nuevo de `/settings` y `/run`.
 - [x] 2026-07-08 20:49 Notificaciones v3 por pedido del usuario: configuración contextual por módulo con `NotificationModuleSettings.vue` y botón de campana en Hábitos, Vehículos, Eventos y Suscripciones; migración `0020_notification_module_settings.sql`; backend de Hábitos usa franja/repetición con `hora`+`minuto`; Vehículos usa preset 180/90/30/15/8/3/0; cron cada 15 minutos.
 - [x] 2026-07-08 21:00 Notificaciones de Hábitos v4: migración `0021_habit_notification_windows.sql`, `habitos_franjas` JSON con múltiples franjas por días; modal permite agregar/quitar franjas, seleccionar días L-M-X-J-V-S-D, usar horas `HH:mm` como `23:59` y aplicar preset L-V 06:00-07:00 + 16:00-23:59 y S-D 00:00-23:59. Backend dedupe por franja/slot.
+- [x] 2026-07-09 19:25 Diagnostico de notificaciones: la D1 local tenia avisos del 2026-07-08, pero `server/smoke.js` usaba `/notifications/read-all` y podia marcar como leidas notificaciones reales. Se cambio el smoke para no llamar `read-all`, marcar solo avisos `Smoke`, usar fecha aislada con `/notifications/run { fecha }` y filtros `GET /api/notifications?fecha=`.
+- [x] 2026-07-09 19:35 Fix notificaciones nuevas: `habitSlot` ya no exige que `Revisar ahora` caiga en el minuto exacto del intervalo; cualquier minuto dentro de la franja usa el slot vigente y mantiene dedupe por inicio de slot. `server/smoke.js` cubre revision manual dentro del intervalo y restaura settings con `try/finally`.
 
 ## Bloqueos
 
 (anotar aquí si algo te impide avanzar; luego continúa con la siguiente tarea no bloqueada)
 - 2026-07-04: Fase 1 bloqueada hasta que Claude complete Fase 0. El repositorio aún no tiene `package.json`, `src/`, `server/`, `migrations/` ni `wrangler.toml`.
   - 2026-07-04 11:50 Codex: desbloqueado técnicamente. Claude dejó scaffold; Codex verificó `npm run build`, migración local y Worker health en `8788` por conflicto temporal de puerto.
+  - 2026-07-12: activar Cloudflare Access en producción requiere entrar a la cuenta Cloudflare y definir el correo exacto autorizado. La preparación fail-closed del repositorio ya está lista; no desplegar hasta completar y probar esa política.
+
+## Seguridad, QA y pruebas — 2026-07-12
+
+- [x] Proteger el flujo de despliegue: `workers_dev = false`, Preview URLs desactivadas y `npm run deploy` bloqueado hasta confirmar `NIBOR_ACCESS_CONFIRMED=1` después de configurar Access.
+- [x] Documentar Cloudflare Access como login de producción para todo `nibor.com` y `/api/*`, con One-time PIN y un único correo permitido; agregar cierre de sesión en producción.
+- [ ] Configurar y probar la política real en Cloudflare con el correo del propietario. Bloqueada por login/configuración externa; ver `docs/CLOUDFLARE_ACCESS.md`.
+- [x] Cerrar Fase 6.3: estados vacíos, errores de red, responsive y ruta 404 verificados; aviso offline agregado.
+- [x] Validar fechas reales centralmente en `server/db.js`, incluyendo fecha, hora y fecha-hora; Salud/Eventos/Vehículos reutilizan los helpers.
+- [x] Agregar `npm test` y `npm run smoke` aislado sobre D1/R2 temporales. El smoke dejó de depender de los 5 hábitos/910 eventos personales y cubre fechas imposibles.
 
 ## Decisiones tomadas
 

@@ -34,6 +34,7 @@ Nibor.com/
 - Porcentajes: `formatPct(0.0125)` → `1,25 %`.
 - Meses: enteros 1–12 en la DB; en UI siempre nombre en español ("Enero 2026").
 - Fechas en DB: `YYYY-MM-DD` (texto).
+- Validar fechas reales con `isValidDate()` de `server/db.js`; nunca duplicar una validación que solo revise el formato.
 - Backend Cloudflare en JavaScript moderno. Mantener las rutas pequeñas y mover helpers reutilizables a `server/db.js` o módulos cercanos.
 - No usar Express ni `better-sqlite3` en el runtime objetivo. La base de datos se consulta con el binding D1 `env.DB`.
 
@@ -47,7 +48,8 @@ Nibor.com/
 - En Salud, el IMC y su categoría se calculan SOLO en el backend y se devuelven en `/api/salud`; el frontend solo los presenta.
 - En Hábitos, progreso, rachas, heatmap, conteos del día e integraciones se calculan SOLO en el backend y se devuelven en `/api/habits`; el frontend solo los presenta.
 - En Vehículos, estado de documentos y días restantes se calculan SOLO en el backend; PDFs se guardan en R2 (`FILES`) y la UI nunca guarda archivos en D1.
-- En Notificaciones, las reglas, deduplicación, prioridad/sonido por regla, franjas múltiples de hábitos por días, avisos programados de vehículos, silencio, pausa y envío Pushover se ejecutan SOLO en backend/cron; el frontend solo invoca `/run`, muestra la bandeja y administra settings por módulo.
+- En Notificaciones, las reglas, deduplicación, prioridad/sonido por regla, franjas múltiples de hábitos por días, avisos programados de vehículos, silencio, pausa y envío Pushover se ejecutan SOLO en backend/cron; el frontend solo invoca `/run`, muestra la bandeja y administra settings por módulo. `fecha` en `/api/notifications` y `/api/notifications/run` queda reservado para smoke/diagnostico, no para UI normal.
+- Producción debe estar protegida por Cloudflare Access para el dominio completo y `/api/*`; nunca agregar un bypass sin una autenticación alternativa revisada.
 - Hábitos es de usuario único (`Nibor`): no reintroducir login, sesiones, tabla `users` ni credenciales desde la app PHP vieja.
 - Un `snapshot` con `saldo_final = NULL` es un mes pendiente: la API lo excluye de totales y rentabilidades (no lo trata como 0).
 - Todas las consultas D1 deben usar statements preparados (`env.DB.prepare(...).bind(...)`) salvo migraciones.
@@ -67,3 +69,4 @@ Nibor.com/
 - Después de completar una fase o detectar un bloqueo, actualiza `ESTADO.md` para que ambos agentes vean el estado global.
 - Si estás bloqueado, escribe el bloqueo en la sección "Bloqueos" de tu archivo y pasa a la siguiente tarea no bloqueada.
 - No cambies el esquema de la DB ni las rutas de la API sin anotarlo en tu archivo de tareas y en `PLAN.md`.
+- `npm run smoke` usa D1/R2 temporales y es la verificación segura por defecto. `npm run smoke:local` puede tocar la D1 local y solo se usa de forma explícita.

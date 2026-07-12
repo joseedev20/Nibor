@@ -20,8 +20,10 @@ const nav = [
 ]
 
 const mounted = ref(false)
+const isProduction = import.meta.env.PROD
 const isDark = useIsDark()
 const sidebarOpen = ref(false)
+const isOffline = ref(false)
 const notificationUnread = ref(0)
 const notificationError = ref('')
 let notificationTimer = null
@@ -39,6 +41,14 @@ function toggleTheme() {
 
 function closeSidebar() {
   sidebarOpen.value = false
+}
+
+function updateConnectionStatus() {
+  isOffline.value = !navigator.onLine
+}
+
+function reloadPage() {
+  window.location.reload()
 }
 
 async function notificationRequest(path, options = {}) {
@@ -68,12 +78,17 @@ onMounted(() => {
   const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches
   applyTheme(savedTheme === 'dark' || (!savedTheme && prefersDark) ? 'dark' : 'light')
   mounted.value = true
+  updateConnectionStatus()
+  window.addEventListener('online', updateConnectionStatus)
+  window.addEventListener('offline', updateConnectionStatus)
   window.addEventListener('nibor:notifications-changed', handleNotificationsChanged)
   refreshNotifications()
   notificationTimer = window.setInterval(() => refreshNotifications(), 5 * 60 * 1000)
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('online', updateConnectionStatus)
+  window.removeEventListener('offline', updateConnectionStatus)
   window.removeEventListener('nibor:notifications-changed', handleNotificationsChanged)
   if (notificationTimer) window.clearInterval(notificationTimer)
 })
@@ -116,6 +131,15 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </header>
+
+    <div
+      v-if="isOffline"
+      role="alert"
+      class="sticky top-16 z-20 flex items-center justify-between gap-3 border-b border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900 md:top-0 md:ml-60 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
+    >
+      <span>Sin conexión. Los datos pueden estar desactualizados y no se guardarán cambios.</span>
+      <button type="button" class="shrink-0 font-semibold underline underline-offset-2" @click="reloadPage">Reintentar</button>
+    </div>
 
     <div
       v-if="sidebarOpen"
@@ -202,6 +226,17 @@ onBeforeUnmount(() => {
           </span>
           <span class="h-2 w-2 rounded-full" :class="mounted && isDark ? 'bg-zinc-100' : 'bg-zinc-900'" />
         </button>
+
+        <a
+          v-if="isProduction"
+          href="/cdn-cgi/access/logout"
+          class="mt-1 flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+        >
+          <svg class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10 17l5-5-5-5m5 5H3m10-8h5a2 2 0 012 2v12a2 2 0 01-2 2h-5" />
+          </svg>
+          Cerrar sesión
+        </a>
 
         <p class="px-3 pt-3 text-xs text-zinc-400 dark:text-zinc-600">v0.2 - datos en Cloudflare D1</p>
       </div>

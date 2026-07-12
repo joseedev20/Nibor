@@ -1,21 +1,12 @@
 import { Hono } from 'hono'
-import { all, fail, first, isValidDate, ok, readJson, run, toInteger } from '../db.js'
+import { all, fail, first, isValidDate, isValidTime, ok, readJson, run, toInteger } from '../db.js'
 
 // Nibor Eventos: calendario personal + feed iCalendar (ICS) para suscribirse
 // desde iPhone. El UID de cada evento es estable: al editar fecha/hora, los
 // calendarios suscritos se actualizan en el siguiente refresh.
 const events = new Hono()
 
-const HORA_RE = /^([01]\d|2[0-3]):[0-5]\d$/
 const BOGOTA_OFFSET_MIN = 5 * 60 // America/Bogota = UTC-5 fijo (sin horario de verano)
-
-// isValidDate solo valida formato; aquí verificamos que la fecha exista de verdad
-function isRealDate(fecha) {
-  if (!isValidDate(fecha)) return false
-  const [y, m, d] = fecha.split('-').map(Number)
-  const date = new Date(Date.UTC(y, m - 1, d))
-  return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d
-}
 
 function normalizeEvent(body, current = {}) {
   return {
@@ -33,8 +24,8 @@ function normalizeEvent(body, current = {}) {
 
 function validateEvent(event) {
   if (!event.titulo) return 'El título es obligatorio'
-  if (!isRealDate(event.fecha)) return 'La fecha debe ser una fecha real en formato YYYY-MM-DD'
-  if (event.hora !== null && !HORA_RE.test(event.hora)) return 'La hora debe tener formato HH:MM'
+  if (!isValidDate(event.fecha)) return 'La fecha debe ser una fecha real en formato YYYY-MM-DD'
+  if (event.hora !== null && !isValidTime(event.hora)) return 'La hora debe tener formato HH:MM'
   if (!Number.isInteger(event.duracion_min) || event.duracion_min < 5 || event.duracion_min > 1440) {
     return 'La duración debe estar entre 5 y 1440 minutos'
   }

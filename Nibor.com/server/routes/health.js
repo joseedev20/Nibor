@@ -5,6 +5,8 @@ import {
   fail,
   first,
   isValidDate,
+  isValidDateTime,
+  isValidTime,
   ok,
   readJson,
   run,
@@ -36,10 +38,6 @@ function cleanText(value, fallback = '') {
 function cleanNullableText(value) {
   const text = cleanText(value)
   return text || null
-}
-
-function isValidDateTime(value) {
-  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)
 }
 
 function round(value, digits = 1) {
@@ -192,7 +190,7 @@ async function validateMedication(db, medication) {
     const condition = await first(db, 'SELECT id FROM health_conditions WHERE id = ?', medication.condition_id)
     if (!condition) return 'La condicion asociada no existe'
   }
-  if (medication.hora !== null && !/^\d{2}:\d{2}$/.test(medication.hora)) return 'La hora debe tener formato HH:mm'
+  if (medication.hora !== null && !isValidTime(medication.hora)) return 'La hora debe tener formato HH:mm'
   return validateNotes(medication.notas)
 }
 

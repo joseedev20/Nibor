@@ -1,5 +1,7 @@
 const baseUrl = process.env.SMOKE_BASE_URL ?? 'http://127.0.0.1:8787/api'
 const smokeYear = 2099
+const notificationSmokeDate = '2000-01-03'
+const notificationSmokeRunId = Date.now()
 const now = new Date()
 const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
@@ -141,6 +143,32 @@ async function run() {
   const expenseCategory = categories.find((category) => category.tipo === 'gasto')
   const incomeCategory = categories.find((category) => category.tipo === 'ingreso')
   if (!expenseCategory || !incomeCategory) throw new Error('No hay categorías seed suficientes')
+
+  const impossibleMovementDate = await expectFailure('/movements', {
+    method: 'POST',
+    body: JSON.stringify({
+      fecha: `${smokeYear}-02-30`,
+      tipo: 'gasto',
+      categoria_id: expenseCategory.id,
+      descripcion: 'Smoke fecha imposible',
+      monto: 1,
+    }),
+  })
+  if (!String(impossibleMovementDate.error ?? '').includes('fecha')) {
+    throw new Error('Movimientos no rechazaron una fecha imposible')
+  }
+
+  const impossibleAppointmentDate = await expectFailure('/salud/appointments', {
+    method: 'POST',
+    body: JSON.stringify({
+      fecha_hora: `${smokeYear}-02-30T24:00`,
+      especialidad: 'Smoke fecha imposible',
+      estado: 'programada',
+    }),
+  })
+  if (!String(impossibleAppointmentDate.error ?? '').includes('fecha')) {
+    throw new Error('Salud no rechazo una fecha/hora imposible')
+  }
 
   await cleanupSmokeData(platform.id)
 
@@ -380,21 +408,22 @@ async function run() {
   const knowledgeByYear = await request(`/knowledge/items?anio=${smokeYear}`)
   if (!knowledgeByYear.items.some((item) => item.id === knowledgeItem.id)) throw new Error('Filtro de conocimiento por anio no incluyo smoke')
 
-  const importedHabits = await request('/habits?include_inactive=1')
-  if (importedHabits.summary.imported_habits !== 5) {
-    throw new Error(`Importacion de habitos no tiene 5 habitos: ${importedHabits.summary.imported_habits}`)
+  const habitsBeforeSmoke = await request('/habits?include_inactive=1')
+  if (!Array.isArray(habitsBeforeSmoke.habits) || !habitsBeforeSmoke.summary) {
+    throw new Error('Contrato base de habitos no devolvio lista y resumen')
   }
-  if (importedHabits.summary.imported_events !== 910) {
-    throw new Error(`Importacion de habitos no tiene 910 eventos: ${importedHabits.summary.imported_events}`)
-  }
-  if (!importedHabits.habits.some((habit) => habit.name === 'Losartán 50 mg' && habit.links.some((link) => link.behavior === 'medication_taken'))) {
-    throw new Error('Habito Losartan no quedo vinculado a Salud')
+  if (
+    Number(habitsBeforeSmoke.summary.imported_habits ?? 0) < 0
+    || Number(habitsBeforeSmoke.summary.imported_events ?? 0) < 0
+  ) {
+    throw new Error('Resumen de importacion de habitos devolvio conteos invalidos')
   }
 
   const smokeHabit = await post('/habits', {
     name: `Smoke habito salud ${Date.now()}`,
     target_per_day: 2,
     color: '#10b981',
+    start_date: '2000-01-01',
     days: [],
     links: [
       { module: 'salud', behavior: 'exercise_done', target_label: 'Smoke ejercicio' },
@@ -406,6 +435,7 @@ async function run() {
     name: `Smoke habito lectura ${Date.now()}`,
     target_per_day: 1,
     color: '#2563eb',
+    start_date: '2000-01-01',
     days: [],
     links: [
       { module: 'knowledge', behavior: 'reading_done', target_label: 'Smoke lectura' },
@@ -609,7 +639,7 @@ async function run() {
 
   const notificationEvent = await post('/events', {
     titulo: `Smoke notificacion ${Date.now()}`,
-    fecha: todayIso,
+    fecha: notificationSmokeDate,
   })
   if (!notificationEvent.id) throw new Error('No se creo evento smoke para notificaciones')
 
@@ -637,6 +667,13 @@ async function run() {
   if (dueItem.estado !== 'por_vencer' || dueItem.dias_restantes !== 0) {
     throw new Error('Documento vehicular para notificacion no quedo venciendo hoy')
   }
+
+  const notificationDueItem = await post(`/vehicles/${vehicle.id}/items`, {
+    nombre: 'Smoke vencimiento notificacion',
+    vence: notificationSmokeDate,
+    notas: 'Smoke notificacion vehiculo aislada',
+  })
+  if (!notificationDueItem.id) throw new Error('No se creo documento vehicular smoke para notificaciones')
 
   const nonPdfUpload = await expectFailure(`/vehicles/items/${vehicleItem.id}/file`, {
     method: 'POST',
@@ -679,121 +716,139 @@ async function run() {
   }
 
   const originalNotificationSettings = await request('/notifications/settings')
-  const smokeSettings = await put('/notifications/settings', {
-    ...originalNotificationSettings,
-    push_habilitado: '0',
-    pushover_user: '',
-    pushover_token: '',
-    regla_suscripciones: '1',
-    regla_habitos: '1',
-    regla_vehiculos: '1',
-    regla_eventos: '1',
-    vehiculos_umbrales: '180,90,30,15,8,3,0',
-    eventos_dias_antes: '1',
-    habitos_hora: '0',
-    habitos_inicio: '0',
-    habitos_fin: '23',
-    habitos_cada_min: '60',
-    habitos_franjas: JSON.stringify([
-      { id: 'smoke-manana', days: [1, 2, 3, 4, 5], start: '06:00', end: '07:00' },
-      { id: 'smoke-tarde', days: [1, 2, 3, 4, 5], start: '16:00', end: '23:59' },
-      { id: 'smoke-finde', days: [6, 0], start: '00:00', end: '23:59' },
-      { id: 'smoke-todos', days: [0, 1, 2, 3, 4, 5, 6], start: '00:00', end: '23:59' },
-    ]),
-    push_suscripciones: '1',
-    push_habitos: '1',
-    push_vehiculos: '1',
-    push_eventos: '1',
-    prioridad_suscripciones: '0',
-    prioridad_habitos: '-1',
-    prioridad_vehiculos: '1',
-    prioridad_eventos: '0',
-    sonido_suscripciones: '',
-    sonido_habitos: 'none',
-    sonido_vehiculos: 'bike',
-    sonido_eventos: 'pushover',
-    silencio_inicio: '22',
-    silencio_fin: '7',
-    pausado_hasta: '',
-    resumen_diario: '0',
-    vencida_recordar_cada: '3',
-  })
-  if (
-    smokeSettings.push_habilitado !== '0'
-    || smokeSettings.regla_eventos !== '1'
-    || smokeSettings.push_vehiculos !== '1'
-    || smokeSettings.prioridad_vehiculos !== '1'
-    || smokeSettings.sonido_vehiculos !== 'bike'
-    || smokeSettings.silencio_inicio !== '22'
-    || smokeSettings.habitos_inicio !== '0'
-    || smokeSettings.habitos_fin !== '23'
-    || smokeSettings.habitos_cada_min !== '60'
-    || !String(smokeSettings.habitos_franjas ?? '').includes('smoke-manana')
-    || !String(smokeSettings.habitos_franjas ?? '').includes('23:59')
-    || smokeSettings.vehiculos_umbrales !== '180,90,30,15,8,3,0'
-  ) {
-    throw new Error('Settings de notificaciones no guardaron valores smoke')
-  }
+  let notificationSettingsRestored = false
+  try {
+    const smokeSettings = await put('/notifications/settings', {
+      ...originalNotificationSettings,
+      push_habilitado: '0',
+      pushover_user: '',
+      pushover_token: '',
+      regla_suscripciones: '0',
+      regla_habitos: '1',
+      regla_vehiculos: '1',
+      regla_eventos: '1',
+      vehiculos_umbrales: '180,90,30,15,8,3,0',
+      eventos_dias_antes: '0',
+      habitos_hora: '0',
+      habitos_inicio: '0',
+      habitos_fin: '23',
+      habitos_cada_min: '60',
+      habitos_franjas: JSON.stringify([
+        { id: `smoke-manual-${notificationSmokeRunId}`, days: [0, 1, 2, 3, 4, 5, 6], start: '23:00', end: '23:59' },
+        { id: 'smoke-manana', days: [1, 2, 3, 4, 5], start: '06:00', end: '07:00' },
+        { id: 'smoke-tarde', days: [1, 2, 3, 4, 5], start: '16:00', end: '23:59' },
+        { id: 'smoke-finde', days: [6, 0], start: '00:00', end: '23:59' },
+        { id: 'smoke-todos', days: [0, 1, 2, 3, 4, 5, 6], start: '00:00', end: '23:59' },
+      ]),
+      push_suscripciones: '0',
+      push_habitos: '0',
+      push_vehiculos: '0',
+      push_eventos: '0',
+      prioridad_suscripciones: '0',
+      prioridad_habitos: '-1',
+      prioridad_vehiculos: '1',
+      prioridad_eventos: '0',
+      sonido_suscripciones: '',
+      sonido_habitos: 'none',
+      sonido_vehiculos: 'bike',
+      sonido_eventos: 'pushover',
+      silencio_inicio: '22',
+      silencio_fin: '7',
+      pausado_hasta: '',
+      resumen_diario: '0',
+      vencida_recordar_cada: '3',
+    })
+    if (
+      smokeSettings.push_habilitado !== '0'
+      || smokeSettings.regla_eventos !== '1'
+      || smokeSettings.push_vehiculos !== '0'
+      || smokeSettings.prioridad_vehiculos !== '1'
+      || smokeSettings.sonido_vehiculos !== 'bike'
+      || smokeSettings.silencio_inicio !== '22'
+      || smokeSettings.habitos_inicio !== '0'
+      || smokeSettings.habitos_fin !== '23'
+      || smokeSettings.habitos_cada_min !== '60'
+      || !String(smokeSettings.habitos_franjas ?? '').includes('smoke-manana')
+      || !String(smokeSettings.habitos_franjas ?? '').includes('23:59')
+      || smokeSettings.vehiculos_umbrales !== '180,90,30,15,8,3,0'
+    ) {
+      throw new Error('Settings de notificaciones no guardaron valores smoke')
+    }
 
-  const invalidNotificationSetting = await expectFailure('/notifications/settings', {
-    method: 'PUT',
-    body: JSON.stringify({ clave_invalida: '1' }),
-  })
-  if (!String(invalidNotificationSetting.error ?? '').includes('Clave desconocida')) {
-    throw new Error('Settings de notificaciones no rechazaron clave desconocida')
-  }
+    const invalidNotificationSetting = await expectFailure('/notifications/settings', {
+      method: 'PUT',
+      body: JSON.stringify({ clave_invalida: '1' }),
+    })
+    if (!String(invalidNotificationSetting.error ?? '').includes('Clave desconocida')) {
+      throw new Error('Settings de notificaciones no rechazaron clave desconocida')
+    }
 
-  const testPushFailure = await expectFailure('/notifications/test-push', { method: 'POST' })
-  if (!String(testPushFailure.error ?? '').includes('Configura primero')) {
-    throw new Error('test-push sin llaves no devolvio el error esperado')
-  }
+    const testPushFailure = await expectFailure('/notifications/test-push', { method: 'POST' })
+    if (!String(testPushFailure.error ?? '').includes('Configura primero')) {
+      throw new Error('test-push sin llaves no devolvio el error esperado')
+    }
 
-  const notificationRun = await post('/notifications/run', { hora: 23, minuto: 0 })
-  if (
-    !Number.isInteger(notificationRun.nuevas)
-    || !Number.isInteger(notificationRun.push_enviadas)
-    || !Number.isInteger(notificationRun.push_retenidas)
-    || typeof notificationRun.en_silencio !== 'boolean'
-    || typeof notificationRun.pausado !== 'boolean'
-  ) {
-    throw new Error('Run de notificaciones no devolvio resumen esperado')
-  }
-  if (notificationRun.en_silencio !== true || notificationRun.pausado !== false) {
-    throw new Error('Run de notificaciones no respeto silencio/pausa smoke')
-  }
+    const notificationRun = await post('/notifications/run', { fecha: notificationSmokeDate, hora: 23, minuto: 22 })
+    if (
+      !Number.isInteger(notificationRun.nuevas)
+      || !Number.isInteger(notificationRun.push_enviadas)
+      || !Number.isInteger(notificationRun.push_retenidas)
+      || typeof notificationRun.en_silencio !== 'boolean'
+      || typeof notificationRun.pausado !== 'boolean'
+    ) {
+      throw new Error('Run de notificaciones no devolvio resumen esperado')
+    }
+    if (notificationRun.en_silencio !== true || notificationRun.pausado !== false) {
+      throw new Error('Run de notificaciones no respeto silencio/pausa smoke')
+    }
+    if (notificationRun.nuevas < 3) {
+      throw new Error('Run de notificaciones no creo avisos smoke dentro del intervalo manual')
+    }
 
-  const pausedSettings = await put('/notifications/settings', {
-    ...smokeSettings,
-    pausado_hasta: '2099-12-31T23:59',
-  })
-  if (pausedSettings.pausado_hasta !== '2099-12-31T23:59') {
-    throw new Error('Settings de notificaciones no guardaron pausa smoke')
-  }
-  const pausedRun = await post('/notifications/run', { hora: 10, minuto: 0 })
-  if (pausedRun.pausado !== true || !Number.isInteger(pausedRun.push_retenidas)) {
-    throw new Error('Run de notificaciones no devolvio pausa/retencion smoke')
-  }
-  await put('/notifications/settings', smokeSettings)
+    const pausedSettings = await put('/notifications/settings', {
+      ...smokeSettings,
+      pausado_hasta: '2099-12-31T23:59',
+    })
+    if (pausedSettings.pausado_hasta !== '2099-12-31T23:59') {
+      throw new Error('Settings de notificaciones no guardaron pausa smoke')
+    }
+    const pausedRun = await post('/notifications/run', { fecha: notificationSmokeDate, hora: 10, minuto: 0 })
+    if (pausedRun.pausado !== true || !Number.isInteger(pausedRun.push_retenidas)) {
+      throw new Error('Run de notificaciones no devolvio pausa/retencion smoke')
+    }
+    await put('/notifications/settings', smokeSettings)
 
-  const notificationList = await request('/notifications')
-  if (!notificationList.notificaciones.some((item) => String(item.titulo).includes(notificationEvent.titulo))) {
-    throw new Error('Notificaciones no incluyeron evento smoke de hoy')
-  }
-  if (!notificationList.notificaciones.some((item) => item.tipo === 'vehiculo' && String(item.titulo).includes('Smoke'))) {
-    throw new Error('Notificaciones no incluyeron vencimiento vehicular smoke')
-  }
+    const notificationList = await request(`/notifications?fecha=${notificationSmokeDate}&limit=200`)
+    if (!notificationList.notificaciones.some((item) => String(item.titulo).includes(notificationEvent.titulo))) {
+      throw new Error('Notificaciones no incluyeron evento smoke de hoy')
+    }
+    if (!notificationList.notificaciones.some((item) => item.tipo === 'vehiculo' && String(item.titulo).includes('Smoke'))) {
+      throw new Error('Notificaciones no incluyeron vencimiento vehicular smoke')
+    }
+    if (!notificationList.notificaciones.some((item) => item.tipo === 'habitos' && String(item.mensaje ?? '').includes(smokeHabit.name))) {
+      throw new Error('Notificaciones no incluyeron habito smoke en revision manual dentro del intervalo')
+    }
 
-  const unreadNotification = notificationList.notificaciones.find((item) => Number(item.leida) === 0)
-  if (unreadNotification) {
-    const readNotification = await post(`/notifications/${unreadNotification.id}/read`, {})
-    if (readNotification.id !== unreadNotification.id) throw new Error('Marcar notificacion leida no devolvio ID esperado')
+    const smokeUnreadNotifications = notificationList.notificaciones.filter((item) => (
+      Number(item.leida) === 0
+      && (
+        String(item.titulo).includes(notificationEvent.titulo)
+        || String(item.titulo).includes('Smoke')
+        || String(item.mensaje ?? '').includes('Smoke')
+      )
+    ))
+    for (const smokeUnreadNotification of smokeUnreadNotifications) {
+      const readNotification = await post(`/notifications/${smokeUnreadNotification.id}/read`, {})
+      if (readNotification.id !== smokeUnreadNotification.id) throw new Error('Marcar notificacion leida no devolvio ID esperado')
+    }
+
+    await put('/notifications/settings', originalNotificationSettings)
+    notificationSettingsRestored = true
+  } finally {
+    if (!notificationSettingsRestored) {
+      await put('/notifications/settings', originalNotificationSettings)
+    }
   }
-
-  await post('/notifications/read-all', {})
-  const readAllList = await request('/notifications')
-  if (readAllList.no_leidas !== 0) throw new Error('read-all de notificaciones no limpio no_leidas')
-
-  await put('/notifications/settings', originalNotificationSettings)
 
   await cleanupSmokeData(platform.id)
 

@@ -11,6 +11,14 @@ npm run db:seed:local
 npm run dev
 ```
 
+También puedes usar el arranque rápido de Windows:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\iniciar-nibor.ps1
+```
+
+Ese script instala dependencias si faltan, aplica migraciones locales pendientes, levanta la app y abre `http://localhost:5173/` cuando ya está lista.
+
 Abrir:
 
 ```text
@@ -28,11 +36,16 @@ No abrir `index.html` directamente desde el explorador: Vite necesita servir los
 ## Verificación
 
 ```powershell
+npm test
 npm run build
 npm run smoke
 ```
 
+`npm run smoke` crea una D1 y un R2 temporales, ejecuta las migraciones y elimina el entorno al terminar. Nunca usa la D1 personal. `npm run smoke:local` queda disponible solo para diagnóstico explícito contra un Worker ya levantado.
+
 ## Primer despliegue en Cloudflare
+
+Antes de publicar, configurar el login privado siguiendo [`docs/CLOUDFLARE_ACCESS.md`](docs/CLOUDFLARE_ACCESS.md). El proyecto desactiva `workers.dev` y las Preview URLs para no dejar una URL pública alternativa.
 
 Hacer una sola vez:
 
@@ -55,8 +68,11 @@ npm run db:seed:remote
 Desplegar Worker + assets de Vite:
 
 ```powershell
+$env:NIBOR_ACCESS_CONFIRMED='1'
 npm run deploy
 ```
+
+Sin esa confirmación, el deploy queda bloqueado. La variable no sustituye la configuración real: primero se debe comprobar en Cloudflare que solo el correo autorizado puede iniciar sesión.
 
 ## Notificaciones push con Pushover
 

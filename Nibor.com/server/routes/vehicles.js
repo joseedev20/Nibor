@@ -14,13 +14,6 @@ function todayBogota() {
   return new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10)
 }
 
-function isRealDate(fecha) {
-  if (!isValidDate(fecha)) return false
-  const [y, m, d] = fecha.split('-').map(Number)
-  const date = new Date(Date.UTC(y, m - 1, d))
-  return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d
-}
-
 function daysBetween(desde, hasta) {
   return Math.round((new Date(`${hasta}T00:00:00Z`) - new Date(`${desde}T00:00:00Z`)) / 86400000)
 }
@@ -162,7 +155,7 @@ vehicles.post('/:id/items', async (c) => {
   const notas = String(body.notas ?? '').trim() || null
 
   if (!nombre) return fail(c, 'El nombre del documento es obligatorio')
-  if (vence !== null && !isRealDate(vence)) return fail(c, 'La fecha de vencimiento debe ser una fecha real YYYY-MM-DD')
+  if (vence !== null && !isValidDate(vence)) return fail(c, 'La fecha de vencimiento debe ser una fecha real YYYY-MM-DD')
 
   const meta = await run(
     c.env.DB,
@@ -190,7 +183,7 @@ vehicles.put('/items/:itemId', async (c) => {
   const notas = body.notas === undefined ? current.notas : (String(body.notas).trim() || null)
 
   if (!nombre) return fail(c, 'El nombre del documento es obligatorio')
-  if (vence !== null && !isRealDate(vence)) return fail(c, 'La fecha de vencimiento debe ser una fecha real YYYY-MM-DD')
+  if (vence !== null && !isValidDate(vence)) return fail(c, 'La fecha de vencimiento debe ser una fecha real YYYY-MM-DD')
 
   await run(
     c.env.DB,
@@ -311,7 +304,7 @@ vehicles.post('/:id/gastos', async (c) => {
 
   if (!concepto) return fail(c, 'El concepto es obligatorio')
   if (!isNonNegative(monto) || monto <= 0) return fail(c, 'El monto debe ser mayor a 0')
-  if (!isRealDate(fecha)) return fail(c, 'La fecha debe ser una fecha real YYYY-MM-DD')
+  if (!isValidDate(fecha)) return fail(c, 'La fecha debe ser una fecha real YYYY-MM-DD')
 
   const categoria = await first(c.env.DB, `SELECT id FROM categories WHERE nombre = 'Vehículos' AND tipo = 'gasto'`)
 

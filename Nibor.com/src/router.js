@@ -16,6 +16,7 @@ const routes = [
   { path: '/suscripciones', name: 'suscripciones', component: () => import('./views/SuscripcionesView.vue'), meta: { title: 'Suscripciones' } },
   { path: '/cierre', name: 'cierre', component: () => import('./views/CierreView.vue'), meta: { title: 'Cierre de mes' } },
   { path: '/config', name: 'config', component: () => import('./views/ConfigView.vue'), meta: { title: 'Configuración' } },
+  { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('./views/NotFoundView.vue'), meta: { title: 'Página no encontrada' } },
 ]
 
 const router = createRouter({

@@ -25,6 +25,12 @@
 - No se usará `better-sqlite3` ni Express en producción; la API se implementa como Worker con binding `env.DB`.
 - Si aparece un archivo local `data/finanzas.db` como export/import temporal, se trata como dato sensible: nunca borrarlo ni recrearlo sin migración explícita.
 
+**Decisión de seguridad (2026-07-12):**
+- La aplicación completa y `/api/*` serán privadas mediante Cloudflare Access antes del primer deploy.
+- Solo se autoriza el correo exacto del propietario, inicialmente con One-time PIN.
+- `workers.dev` y Preview URLs permanecen desactivadas; el deploy exige confirmación explícita de que Access ya está configurado.
+- El feed iCalendar no se publica con bypass mientras no exista una URL secreta rotatoria; la privacidad prevalece sobre la suscripción remota.
+
 ## 2. Secciones de la app
 
 Nibor.com es una app madre. Finanzas queda como el primer módulo productivo; los nuevos módulos deben convivir dentro del mismo layout, API y base D1 salvo que exista una razón fuerte para separar.
@@ -174,6 +180,7 @@ notification_settings (clave, valor, updated_at)
 - `rentabilidad = ganancia / saldo_total_inicial` (si saldo_total_inicial > 0)
 - `saldo_inicial` del mes N = `saldo_final` del mes N−1 (auto, editable la primera vez)
 - `imc = peso_kg / (estatura_m * estatura_m)`; categoría adulta calculada en backend: bajo peso, peso saludable, sobrepeso u obesidad por clase
+- Todas las fechas de entrada deben existir realmente en calendario; no basta con coincidir con el formato `YYYY-MM-DD`.
 
 **Agregados de API:**
 - `GET /api/snapshots?anio=` devuelve `consolidated` y `consolidated_by_tipo` (`inversion`, `fondo`) para que la UI no recalcule totales ni rentabilidades.
@@ -189,7 +196,7 @@ notification_settings (clave, valor, updated_at)
 - `GET/POST/PUT/DELETE /api/habits` administra hábitos; subrutas: `/today`, `/:id/check`, `/:id/defer`, `/reorder`, `/progress`, `/activity?module=salud|knowledge`. La migración vieja se ejecuta con `npm run habits:import:local`.
 - `GET/POST/PUT/DELETE /api/events` administra eventos; `GET /api/events/calendar.ics` expone el feed iCalendar para suscripción.
 - `GET/POST/PUT/DELETE /api/vehicles` administra vehículos; subrutas para documentos, PDF en R2 y gastos: `/items`, `/items/:id/file`, `/:id/gastos`.
-- `GET /api/notifications` lista notificaciones y `no_leidas`; subrutas: `/run`, `/:id/read`, `/read-all`, `/settings`, `/test-push`. `POST /api/notifications/run` acepta `hora`/`minuto` opcionales para smoke y devuelve `push_enviadas`, `push_retenidas`, `en_silencio` y `pausado`.
+- `GET /api/notifications` lista notificaciones y `no_leidas`; acepta `fecha=YYYY-MM-DD` opcional para diagnostico/smoke. Subrutas: `/run`, `/:id/read`, `/read-all`, `/settings`, `/test-push`. `POST /api/notifications/run` acepta `hora`/`minuto`/`fecha` opcionales para smoke y devuelve `push_enviadas`, `push_retenidas`, `en_silencio` y `pausado`.
 
 ## 4. Fases de trabajo
 

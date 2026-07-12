@@ -67,7 +67,25 @@ export function isNonNegative(number) {
 }
 
 export function isValidDate(value) {
-  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+  if (typeof value !== 'string') return false
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!match) return false
+
+  const year = Number(match[1])
+  if (year < 1900 || year > 2200) return false
+
+  const date = new Date(`${value}T00:00:00Z`)
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+}
+
+export function isValidTime(value) {
+  return typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value)
+}
+
+export function isValidDateTime(value) {
+  if (typeof value !== 'string') return false
+  const [date, time, extra] = value.split('T')
+  return extra === undefined && isValidDate(date) && isValidTime(time)
 }
 
 export function getPeriodFromSearch(c) {

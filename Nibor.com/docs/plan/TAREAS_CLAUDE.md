@@ -47,8 +47,9 @@ Leer `PLAN.md`, `CONVENCIONES.md` y `ESTADO.md` antes de empezar.
   - 2026-07-04 13:44 Codex: Happi quedó completado Ene-Jul 2026 desde la captura del usuario en `scripts/seed_historicos.sql`; seed aplicado a D1 local. Falta aplicar el mismo seed en D1 remoto cuando exista login/database_id.
 - [x] 6.2 Toggle dark mode
   - 2026-07-04 12:25 Codex: botón agregado en sidebar de `App.vue`; persiste `localStorage('theme')` y alterna clase `dark` en `<html>`.
-- [ ] 6.3 Revisión final de estados vacíos, errores de red y responsive
+- [x] 6.3 Revisión final de estados vacíos, errores de red y responsive
   - 2026-07-04 13:21 Codex: sidebar móvil listo y probado en 390x844; sin overflow horizontal. Deploy prep listo con `README.md`, `[assets]` y `npm run deploy`.
+  - 2026-07-12 12:13 Codex: revisión final cerrada. Las 15 rutas y la nueva 404 cargan sin errores de consola, `NaN` ni `#DIV/0!`; estados vacíos verificados; Dashboard/Inversiones/Hábitos/Notificaciones/Configuración/404 probados en 390x844 sin overflow. `App.vue` muestra aviso offline con reintento y el código existente presenta errores de API por vista.
 
 ## Bloqueos
 

@@ -1,6 +1,6 @@
 # Estado compartido — Nibor.com
 
-Actualizado: 2026-07-08 21:00 -05:00
+Actualizado: 2026-07-12 12:13 -05:00
 
 ## Decisión activa
 
@@ -31,7 +31,7 @@ Actualizado: 2026-07-08 21:00 -05:00
 | 3 — Dashboard | Claude | Completada | Observaciones de QA corregidas (botón Actual con fallback, Math.abs en variación) |
 | 4 — Gastos/Suscripciones | Codex | Completada | Gastos, movimientos, suscripciones y categorías listas |
 | 5 — Cierre de mes | Claude | Completada | QA Codex OK: cierre ficticio de julio, validaciones negativas y reversión a pendiente |
-| 6 — Históricos y pulido | Claude + Codex | En progreso | 6.1 local completo; 6.2 dark listo; metas e ingresos fijos listos; falta 6.3 final y remoto/deploy cuando se reactive |
+| 6 — Históricos y pulido | Claude + Codex | En progreso | 6.1 local, 6.2 dark y 6.3 revisión final completos; falta Access + remoto/deploy cuando se reactive |
 | 7 — Nibor Música | Codex | Completada | MVP de canciones: tabla D1, API `/api/music/songs`, vista `/musica`, menú y smoke |
 | 8 — Nibor Conocimiento | Codex | Completada | MVP de aprendizaje con idioma y año controlados: tabla D1, API `/api/knowledge/items`, vista `/conocimiento`, menú y smoke |
 | 9 — Préstamos y ahorro Viajes | Codex | Completada | Plataforma `Viajes` creada por migración como `inversion`; préstamos con tabla D1, API `/api/loans`, vista `/prestamos`, menú y smoke |
@@ -43,7 +43,7 @@ Actualizado: 2026-07-08 21:00 -05:00
 
 ## Bloqueos activos
 
-- Ninguno para las fases asignadas a Codex.
+- El deploy remoto permanece bloqueado hasta configurar Cloudflare Access para `nibor.com`, permitir solo el correo exacto del propietario y verificar el login en incógnito. El repositorio ya bloquea despliegues accidentales y desactiva `workers.dev`/Preview URLs.
 
 ## Handoff actual
 
@@ -76,7 +76,13 @@ Actualizado: 2026-07-08 21:00 -05:00
 - Claude completó backend de Notificaciones: migraciones `0018_notifications.sql` y `0019_notification_prefs.sql`, API `/api/notifications`, motor `runChecks`, cron en `wrangler.toml` y Pushover. Codex completó frontend: campana global en `App.vue`, ruta/vista `/notificaciones`, bandeja, marcar leída/todas, configuración v2 con push/prioridad/sonido por regla, silencio, pausa, resumen diario, prueba push, smoke y README.
 - Codex agregó Notificaciones v3 por pedido del usuario: migración `0020_notification_module_settings.sql`, botón de campana/configuración contextual en `/habitos`, `/vehiculos`, `/eventos` y `/suscripciones`; modal reutilizable `NotificationModuleSettings.vue`; hábitos con franja y repetición; vehículos con preset 180/90/30/15/8/3/0; cron Cloudflare cada 15 minutos para que las franjas funcionen.
 - Codex agregó Notificaciones v4 para Hábitos: migración `0021_habit_notification_windows.sql`, `habitos_franjas` como JSON en `notification_settings`, múltiples franjas por días con preset L-V mañana/tarde y S-D todo el día; backend filtra por día/hora/minuto y mantiene dedupe por franja.
-- Para smoke local: levantar Wrangler y correr `npm run smoke`. Si se usa otro puerto, definir `SMOKE_BASE_URL`.
+- Codex diagnostico el reporte del 2026-07-08: la D1 local si tenia notificaciones de ese dia, pero el smoke podia marcar notificaciones reales como leidas con `/notifications/read-all`. Quedo corregido para usar fecha aislada en `/api/notifications/run`, filtro `GET /api/notifications?fecha=` y marcado individual solo de avisos `Smoke`.
+- Codex corrigio la causa de "0 nuevas" en revisiones manuales: las notificaciones de habitos ya se generan en cualquier minuto dentro de la franja activa, no solo exactamente en el inicio del slot; el dedupe sigue usando el inicio del slot. El smoke ahora prueba ese caso y restaura settings con `try/finally`.
+- Verificación recomendada: `npm run smoke` usa un Worker y D1/R2 temporales. Para diagnóstico explícito contra un Worker ya levantado, usar `npm run smoke:local` y definir `SMOKE_BASE_URL` si corre en otro puerto.
+- Seguridad de producción preparada: Cloudflare Access será el login del dominio completo y `/api/*`; `workers_dev`/Preview URLs están desactivadas, producción muestra `Cerrar sesión` y `npm run deploy` exige `NIBOR_ACCESS_CONFIRMED=1`. Falta la configuración real en la cuenta Cloudflare.
+- Fase 6.3 cerrada: rutas, 404, estados vacíos y responsive 390x844 verificados sin errores de consola ni overflow; `App.vue` incluye aviso offline/reintento.
+- Validación temporal endurecida: `isValidDate`, `isValidTime` e `isValidDateTime` rechazan fechas/horas imposibles en todos los módulos que reutilizan `server/db.js`.
+- Pruebas seguras: `npm test` cubre helpers y fórmulas; `npm run smoke` ahora crea/elimina D1 y R2 temporales y nunca usa datos personales. Para apuntar de forma explícita a un Worker levantado existe `npm run smoke:local`.
 
 ## Notas de arquitectura
 
