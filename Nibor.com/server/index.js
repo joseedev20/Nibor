@@ -4,6 +4,7 @@ import categories from './routes/categories.js'
 import closeMonth from './routes/closeMonth.js'
 import events from './routes/events.js'
 import exchangeRates from './routes/exchangeRates.js'
+import family from './routes/family.js'
 import goals from './routes/goals.js'
 import habits from './routes/habits.js'
 import health from './routes/health.js'
@@ -29,6 +30,7 @@ app.route('/categories', categories)
 app.route('/cards', cards)
 app.route('/exchange-rates', exchangeRates)
 app.route('/events', events)
+app.route('/family', family)
 app.route('/snapshots', snapshots)
 app.route('/movements', movements)
 app.route('/subscriptions', subscriptions)

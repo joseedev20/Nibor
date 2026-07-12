@@ -1,6 +1,6 @@
 # Estado compartido — Nibor.com
 
-Actualizado: 2026-07-12 14:00 -05:00
+Actualizado: 2026-07-12 15:10 -05:00
 
 ## Decisión activa
 
@@ -40,6 +40,7 @@ Actualizado: 2026-07-12 14:00 -05:00
 | 12 — Eventos | Claude | Completada | Calendario personal con migración `0016_events.sql`, API `/api/events`, feed `/api/events/calendar.ics`, vista `/eventos` y smoke Codex |
 | 13 — Vehículos | Claude | Completada | Vehículos con migración `0017`, API `/api/vehicles`, PDFs en R2, vista `/vehiculos`, gastos integrados y smoke Codex |
 | 14 — Notificaciones | Claude + Codex | Completada | Backend/cron/Pushover v2 por Claude; configuración contextual por módulo, campana, `/notificaciones`, smoke y docs por Codex |
+| 15 — Familiar | Codex | Completada | Directorio privado, identificación visible, visor/descarga PDF en R2, responsive y smoke |
 
 ## Bloqueos activos
 
@@ -99,3 +100,4 @@ Actualizado: 2026-07-12 14:00 -05:00
 - `events` alimenta el módulo Eventos y el feed ICS. El UID debe permanecer estable al editar para que calendarios suscritos actualicen correctamente.
 - `vehicles` y `vehicle_items` guardan metadatos; los PDFs viven en R2 (`FILES`, bucket `nibor-files`). En remoto hay que crear el bucket con `npx wrangler r2 bucket create nibor-files` antes del deploy.
 - `notifications` usa `dedupe_key` para no duplicar reglas del cron. Pushover requiere `pushover_user` y `pushover_token` guardados en settings; sin llaves, solo funciona la bandeja in-app. La tabla guarda prioridad y sonido por notificación; `notification_settings` guarda la entrega por regla, silencio, pausa, resumen diario, franjas múltiples de hábitos, programación de vehículos y repetición de vencidas.
+- `family_members` guarda información identificatoria sensible; sus PDFs viven en R2 privado (`FILES`). Nunca incluir familiares, números de documento ni PDFs reales en migraciones, seeds, fixtures, logs o smoke.

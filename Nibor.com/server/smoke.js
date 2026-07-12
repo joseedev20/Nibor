@@ -77,6 +77,11 @@ async function cleanupSmokeData(platformId) {
     await del(`/loans/${loan.id}`)
   }
 
+  const family = await request('/family')
+  for (const member of family.filter((entry) => String(entry.nombre).startsWith('Smoke '))) {
+    await del(`/family/${member.id}`)
+  }
+
   const knowledge = await request('/knowledge/items')
   for (const item of knowledge.items.filter((entry) => String(entry.titulo).startsWith('Smoke '))) {
     await del(`/knowledge/items/${item.id}`)
@@ -643,6 +648,51 @@ async function run() {
   })
   if (!notificationEvent.id) throw new Error('No se creo evento smoke para notificaciones')
 
+  const familyMember = await post('/family', {
+    nombre: `Smoke familiar ${Date.now()}`,
+    parentesco: 'Prueba',
+    tipo_documento: 'cedula_ciudadania',
+    numero_documento: 'SMOKE-0001',
+    notas: 'Registro ficticio y temporal',
+  })
+  if (!familyMember.id || familyMember.parentesco !== 'Prueba') throw new Error('No se creo familiar smoke')
+
+  const editedFamilyMember = await put(`/family/${familyMember.id}`, {
+    parentesco: 'Prueba editada',
+  })
+  if (editedFamilyMember.parentesco !== 'Prueba editada') throw new Error('No se edito familiar smoke')
+
+  const invalidFamily = await expectFailure('/family', {
+    method: 'POST',
+    body: JSON.stringify({ nombre: 'Smoke invalido', parentesco: '', numero_documento: '' }),
+  })
+  if (!String(invalidFamily.error ?? '').includes('parentesco')) throw new Error('Validacion familiar no devolvio error esperado')
+
+  const familyPdfBytes = new Uint8Array([37, 80, 68, 70, 45, 49, 46, 52, 10, 37, 83, 77, 79, 75, 69, 10])
+  const familyUploadResponse = await fetch(`${baseUrl}/family/${familyMember.id}/file`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/pdf',
+      'x-file-name': encodeURIComponent('smoke-familiar.pdf'),
+    },
+    body: familyPdfBytes,
+  })
+  const familyUploadJson = await familyUploadResponse.json()
+  if (!familyUploadResponse.ok || familyUploadJson.data.file_name !== 'smoke-familiar.pdf') {
+    throw new Error(`Upload PDF familiar fallo: ${JSON.stringify(familyUploadJson)}`)
+  }
+
+  const familyDownloadResponse = await fetch(`${baseUrl}/family/${familyMember.id}/file`)
+  const familyDownloaded = await familyDownloadResponse.arrayBuffer()
+  if (
+    !familyDownloadResponse.ok
+    || familyDownloaded.byteLength !== familyPdfBytes.byteLength
+    || !String(familyDownloadResponse.headers.get('content-disposition')).startsWith('inline')
+  ) {
+    throw new Error('Vista PDF familiar no hizo roundtrip binario inline')
+  }
+  await del(`/family/${familyMember.id}/file`)
+
   const vehicle = await post('/vehicles', {
     nombre: `Smoke vehiculo ${Date.now()}`,
     tipo: 'carro',
@@ -852,7 +902,7 @@ async function run() {
 
   await cleanupSmokeData(platform.id)
 
-  console.log('Endpoints OK: platforms, categories, cards, snapshots, movements, subscriptions/apply, summary, close-month, goals, music, knowledge, habits, loans, salud, events, vehicles, notifications')
+  console.log('Endpoints OK: platforms, categories, cards, snapshots, movements, subscriptions/apply, summary, close-month, goals, music, knowledge, habits, loans, salud, events, vehicles, family, notifications')
 }
 
 run().catch((error) => {

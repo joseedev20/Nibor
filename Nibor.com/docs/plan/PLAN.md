@@ -112,6 +112,10 @@ Nibor.com es una app madre. Finanzas queda como el primer módulo productivo; lo
    - Entrega configurable por regla: push sí/no, prioridad silenciosa/normal/alta, sonido Pushover, silencio horario, pausa temporal y resumen diario
    - Hábitos permite múltiples franjas de recordatorios por días de semana, y Vehículos permite avisos programados tipo 180/90/30/15/8/3/0 días antes
    - Motor idempotente ejecutable por cron Cloudflare y por `POST /api/notifications/run`
+16. **Familiar**:
+   - Directorio privado y dinámico con nombre, parentesco, tipo y número de documento visibles y notas opcionales
+   - Un PDF opcional por familiar, guardado en R2 privado y disponible para ver o descargar dentro de Cloudflare Access
+   - Primer MVP en `/familiar`, con API `/api/family`
 
 ## 3. Modelo de datos (D1 / SQLite semantics)
 
@@ -171,6 +175,8 @@ vehicle_items    (id, vehicle_id, nombre, vence, notas, file_key, file_name, fil
                  -- agregado en migración 0017; archivos PDF viven en R2 con binding FILES
 notifications    (id, tipo, titulo, mensaje, fecha, dedupe_key, leida, push_enviada, prioridad, sonido, created_at)
 notification_settings (clave, valor, updated_at)
+family_members   (id, nombre, parentesco, tipo_documento, numero_documento, notas, file_key, file_name, file_size, created_at, updated_at)
+                 -- agregado en migración 0022; datos sensibles en D1 y PDF privado en R2, nunca en seeds/migraciones
                  -- agregado en migración 0018 y ampliado en 0019/0020/0021; settings incluye push/prioridad/sonido por regla, silencio, pausa, resumen diario, franjas de hábitos por días y programación de vehículos
 ```
 
@@ -197,6 +203,7 @@ notification_settings (clave, valor, updated_at)
 - `GET/POST/PUT/DELETE /api/events` administra eventos; `GET /api/events/calendar.ics` expone el feed iCalendar para suscripción.
 - `GET/POST/PUT/DELETE /api/vehicles` administra vehículos; subrutas para documentos, PDF en R2 y gastos: `/items`, `/items/:id/file`, `/:id/gastos`.
 - `GET /api/notifications` lista notificaciones y `no_leidas`; acepta `fecha=YYYY-MM-DD` opcional para diagnostico/smoke. Subrutas: `/run`, `/:id/read`, `/read-all`, `/settings`, `/test-push`. `POST /api/notifications/run` acepta `hora`/`minuto`/`fecha` opcionales para smoke y devuelve `push_enviadas`, `push_retenidas`, `en_silencio` y `pausado`.
+- `GET/POST/PUT/DELETE /api/family` administra familiares; `POST/GET/DELETE /api/family/:id/file` guarda, muestra/descarga y elimina el PDF privado en R2.
 
 ## 4. Fases de trabajo
 
@@ -217,6 +224,7 @@ notification_settings (clave, valor, updated_at)
 | 12 | Eventos MVP: calendario personal e iCalendar | Claude |
 | 13 | Vehículos MVP: documentos, R2 y gastos integrados | Claude |
 | 14 | Notificaciones: backend/cron por Claude, campana/vista/config/smoke/docs por Codex | Claude + Codex |
+| 15 | Familiar MVP: directorio, documentos visibles y PDFs privados en R2 | Codex |
 
 Detalle de tareas: `TAREAS_CLAUDE.md` y `TAREAS_CODEX.md` en esta carpeta.
 Reglas compartidas: `CONVENCIONES.md`. **Ambos agentes deben leer CONVENCIONES.md antes de escribir código.**
