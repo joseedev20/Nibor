@@ -86,13 +86,13 @@ Notas técnicas para Fase 1:
 (anotar aquí si algo te impide avanzar; luego continúa con la siguiente tarea no bloqueada)
 - 2026-07-04: Fase 1 bloqueada hasta que Claude complete Fase 0. El repositorio aún no tiene `package.json`, `src/`, `server/`, `migrations/` ni `wrangler.toml`.
   - 2026-07-04 11:50 Codex: desbloqueado técnicamente. Claude dejó scaffold; Codex verificó `npm run build`, migración local y Worker health en `8788` por conflicto temporal de puerto.
-  - 2026-07-12: Cloudflare Access ya está configurado para `niborapp.com` con los dos correos autorizados. Falta probarlo contra el Worker ya desplegado.
+  - 2026-07-12: Cloudflare Access ya está configurado para `niborapp.com` con los dos correos autorizados y OTP por correo. Acceso autorizado comprobado; sin sesión queda bloqueado.
 
 ## Seguridad, QA y pruebas — 2026-07-12
 
 - [x] Proteger el flujo de despliegue: `workers_dev = false`, Preview URLs desactivadas y `npm run deploy` bloqueado hasta confirmar `NIBOR_ACCESS_CONFIRMED=1` después de configurar Access.
 - [x] Documentar Cloudflare Access como login de producción para todo `nibor.com` y `/api/*`, con One-time PIN y un único correo permitido; agregar cierre de sesión en producción.
-- [ ] Probar la política real de Cloudflare Access contra `niborapp.com` ya desplegado, con ambos correos autorizados y uno no autorizado; ver `docs/CLOUDFLARE_ACCESS.md`.
+- [x] Probar la política real de Cloudflare Access contra `niborapp.com`: el OTP por correo permite el acceso autorizado y sin sesión queda bloqueado; ver `docs/CLOUDFLARE_ACCESS.md`.
 - [x] Cerrar Fase 6.3: estados vacíos, errores de red, responsive y ruta 404 verificados; aviso offline agregado.
 - [x] Validar fechas reales centralmente en `server/db.js`, incluyendo fecha, hora y fecha-hora; Salud/Eventos/Vehículos reutilizan los helpers.
 - [x] Agregar `npm test` y `npm run smoke` aislado sobre D1/R2 temporales. El smoke dejó de depender de los 5 hábitos/910 eventos personales y cubre fechas imposibles.

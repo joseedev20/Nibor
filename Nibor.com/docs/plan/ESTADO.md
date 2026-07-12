@@ -31,7 +31,7 @@ Actualizado: 2026-07-12 14:00 -05:00
 | 3 — Dashboard | Claude | Completada | Observaciones de QA corregidas (botón Actual con fallback, Math.abs en variación) |
 | 4 — Gastos/Suscripciones | Codex | Completada | Gastos, movimientos, suscripciones y categorías listas |
 | 5 — Cierre de mes | Claude | Completada | QA Codex OK: cierre ficticio de julio, validaciones negativas y reversión a pendiente |
-| 6 — Históricos y pulido | Claude + Codex | En progreso | 6.1 local, 6.2 dark y 6.3 revisión final completos; D1/R2/Access ya están configurados, falta deploy Git y prueba final de Access |
+| 6 — Históricos y pulido | Claude + Codex | Completado | 6.1 local, 6.2 dark y 6.3 revisión final completos; D1/R2/Access y el despliegue en `niborapp.com` están verificados |
 | 7 — Nibor Música | Codex | Completada | MVP de canciones: tabla D1, API `/api/music/songs`, vista `/musica`, menú y smoke |
 | 8 — Nibor Conocimiento | Codex | Completada | MVP de aprendizaje con idioma y año controlados: tabla D1, API `/api/knowledge/items`, vista `/conocimiento`, menú y smoke |
 | 9 — Préstamos y ahorro Viajes | Codex | Completada | Plataforma `Viajes` creada por migración como `inversion`; préstamos con tabla D1, API `/api/loans`, vista `/prestamos`, menú y smoke |
@@ -43,7 +43,7 @@ Actualizado: 2026-07-12 14:00 -05:00
 
 ## Bloqueos activos
 
-- Falta conectar el Worker al repositorio Git, desplegarlo en `niborapp.com` y verificar Access en incógnito. Access ya tiene dos correos exactos autorizados; `workers.dev`/Preview URLs siguen desactivados.
+- Access ya tiene dos correos exactos autorizados y OTP por correo; `workers.dev`/Preview URLs siguen desactivados. El Worker se despliega desde Git en `niborapp.com`.
 
 ## Handoff actual
 
@@ -79,7 +79,7 @@ Actualizado: 2026-07-12 14:00 -05:00
 - Codex diagnostico el reporte del 2026-07-08: la D1 local si tenia notificaciones de ese dia, pero el smoke podia marcar notificaciones reales como leidas con `/notifications/read-all`. Quedo corregido para usar fecha aislada en `/api/notifications/run`, filtro `GET /api/notifications?fecha=` y marcado individual solo de avisos `Smoke`.
 - Codex corrigio la causa de "0 nuevas" en revisiones manuales: las notificaciones de habitos ya se generan en cualquier minuto dentro de la franja activa, no solo exactamente en el inicio del slot; el dedupe sigue usando el inicio del slot. El smoke ahora prueba ese caso y restaura settings con `try/finally`.
 - Verificación recomendada: `npm run smoke` usa un Worker y D1/R2 temporales. Para diagnóstico explícito contra un Worker ya levantado, usar `npm run smoke:local` y definir `SMOKE_BASE_URL` si corre en otro puerto.
-- Seguridad de producción configurada: Cloudflare Access protege `niborapp.com` y `/api/*` para los dos correos autorizados; `workers_dev`/Preview URLs están desactivadas, producción muestra `Cerrar sesión` y `npm run deploy` exige `NIBOR_ACCESS_CONFIRMED=1`. Falta comprobarlo tras el deploy.
+- Seguridad de producción configurada: Cloudflare Access protege `niborapp.com` y `/api/*` para los dos correos autorizados; `workers_dev`/Preview URLs están desactivadas, producción muestra `Cerrar sesión` y `npm run deploy` exige `NIBOR_ACCESS_CONFIRMED=1`. En `[assets]`, `run_worker_first = ["/api/*"]` garantiza que las APIs no caigan en el fallback SPA.
 - Fase 6.3 cerrada: rutas, 404, estados vacíos y responsive 390x844 verificados sin errores de consola ni overflow; `App.vue` incluye aviso offline/reintento.
 - Validación temporal endurecida: `isValidDate`, `isValidTime` e `isValidDateTime` rechazan fechas/horas imposibles en todos los módulos que reutilizan `server/db.js`.
 - Pruebas seguras: `npm test` cubre helpers y fórmulas; `npm run smoke` ahora crea/elimina D1 y R2 temporales y nunca usa datos personales. Para apuntar de forma explícita a un Worker levantado existe `npm run smoke:local`.
