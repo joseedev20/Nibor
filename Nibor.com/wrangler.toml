@@ -15,7 +15,7 @@ not_found_handling = "single-page-application"
 [[d1_databases]]
 binding = "DB"
 database_name = "nibor-finanzas"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "34265deb-5084-4192-b412-c2f890b18655"
 migrations_dir = "migrations"
 
 # Cron de notificaciones frecuente: las reglas del backend deciden si toca avisar.

@@ -1,6 +1,6 @@
 # Estado compartido — Nibor.com
 
-Actualizado: 2026-07-12 12:13 -05:00
+Actualizado: 2026-07-12 14:00 -05:00
 
 ## Decisión activa
 
@@ -31,7 +31,7 @@ Actualizado: 2026-07-12 12:13 -05:00
 | 3 — Dashboard | Claude | Completada | Observaciones de QA corregidas (botón Actual con fallback, Math.abs en variación) |
 | 4 — Gastos/Suscripciones | Codex | Completada | Gastos, movimientos, suscripciones y categorías listas |
 | 5 — Cierre de mes | Claude | Completada | QA Codex OK: cierre ficticio de julio, validaciones negativas y reversión a pendiente |
-| 6 — Históricos y pulido | Claude + Codex | En progreso | 6.1 local, 6.2 dark y 6.3 revisión final completos; falta Access + remoto/deploy cuando se reactive |
+| 6 — Históricos y pulido | Claude + Codex | En progreso | 6.1 local, 6.2 dark y 6.3 revisión final completos; D1/R2/Access ya están configurados, falta deploy Git y prueba final de Access |
 | 7 — Nibor Música | Codex | Completada | MVP de canciones: tabla D1, API `/api/music/songs`, vista `/musica`, menú y smoke |
 | 8 — Nibor Conocimiento | Codex | Completada | MVP de aprendizaje con idioma y año controlados: tabla D1, API `/api/knowledge/items`, vista `/conocimiento`, menú y smoke |
 | 9 — Préstamos y ahorro Viajes | Codex | Completada | Plataforma `Viajes` creada por migración como `inversion`; préstamos con tabla D1, API `/api/loans`, vista `/prestamos`, menú y smoke |
@@ -43,7 +43,7 @@ Actualizado: 2026-07-12 12:13 -05:00
 
 ## Bloqueos activos
 
-- El deploy remoto permanece bloqueado hasta configurar Cloudflare Access para `nibor.com`, permitir solo el correo exacto del propietario y verificar el login en incógnito. El repositorio ya bloquea despliegues accidentales y desactiva `workers.dev`/Preview URLs.
+- Falta conectar el Worker al repositorio Git, desplegarlo en `niborapp.com` y verificar Access en incógnito. Access ya tiene dos correos exactos autorizados; `workers.dev`/Preview URLs siguen desactivados.
 
 ## Handoff actual
 
@@ -54,7 +54,7 @@ Actualizado: 2026-07-12 12:13 -05:00
 - QA Dashboard: build/smoke/consola OK; observaciones corregidas por Claude.
 - Codex cargó Happi Ene-Jul 2026 en `scripts/seed_historicos.sql` y lo aplicó a D1 local; julio queda pendiente con `saldo_final = NULL`.
 - QA Wizard Fase 5: cierre ficticio de julio OK, Dashboard/Inversiones vía API reflejan el cierre, validaciones negativas OK, julio revertido a pendiente sin borrar filas.
-- Queda pendiente Cloudflare remoto: `wrangler login`, crear D1 real/pegar `database_id`, migrar/seed remoto y `npm run deploy`.
+- 2026-07-12: D1 remota `nibor-finanzas` creada y migrada; R2 privado `nibor-files` creado; 6.452 filas de la D1 local se migraron y los conteos clave coinciden. `wrangler.toml` usa el ID remoto real. Falta commit/push, conectar Workers Builds y asociar el dominio al Worker.
 - Codex actualizó `/api/snapshots` con `consolidated_by_tipo` y `InversionesView` permite alternar Total, Inversiones y Fondos de ahorro dentro de la pestaña "Todas".
 - Codex agregó presets guiados de ingresos fijos en `SuscripcionesView` (Salario y Arriendo apartamento) y aviso en Dashboard cuando no hay ingresos fijos para calcular tasa de ahorro.
 - Codex agregó módulo Metas: migraciones `0004_goals.sql` y `0005_goal_allocations_amount.sql`, API `/api/goals`, vista `MetasView`, ruta `/metas` y navegación lateral. La UI permite asignar fuentes por valor COP o por porcentaje; el backend normaliza y guarda `monto_asignado` + `porcentaje`.
@@ -79,7 +79,7 @@ Actualizado: 2026-07-12 12:13 -05:00
 - Codex diagnostico el reporte del 2026-07-08: la D1 local si tenia notificaciones de ese dia, pero el smoke podia marcar notificaciones reales como leidas con `/notifications/read-all`. Quedo corregido para usar fecha aislada en `/api/notifications/run`, filtro `GET /api/notifications?fecha=` y marcado individual solo de avisos `Smoke`.
 - Codex corrigio la causa de "0 nuevas" en revisiones manuales: las notificaciones de habitos ya se generan en cualquier minuto dentro de la franja activa, no solo exactamente en el inicio del slot; el dedupe sigue usando el inicio del slot. El smoke ahora prueba ese caso y restaura settings con `try/finally`.
 - Verificación recomendada: `npm run smoke` usa un Worker y D1/R2 temporales. Para diagnóstico explícito contra un Worker ya levantado, usar `npm run smoke:local` y definir `SMOKE_BASE_URL` si corre en otro puerto.
-- Seguridad de producción preparada: Cloudflare Access será el login del dominio completo y `/api/*`; `workers_dev`/Preview URLs están desactivadas, producción muestra `Cerrar sesión` y `npm run deploy` exige `NIBOR_ACCESS_CONFIRMED=1`. Falta la configuración real en la cuenta Cloudflare.
+- Seguridad de producción configurada: Cloudflare Access protege `niborapp.com` y `/api/*` para los dos correos autorizados; `workers_dev`/Preview URLs están desactivadas, producción muestra `Cerrar sesión` y `npm run deploy` exige `NIBOR_ACCESS_CONFIRMED=1`. Falta comprobarlo tras el deploy.
 - Fase 6.3 cerrada: rutas, 404, estados vacíos y responsive 390x844 verificados sin errores de consola ni overflow; `App.vue` incluye aviso offline/reintento.
 - Validación temporal endurecida: `isValidDate`, `isValidTime` e `isValidDateTime` rechazan fechas/horas imposibles en todos los módulos que reutilizan `server/db.js`.
 - Pruebas seguras: `npm test` cubre helpers y fórmulas; `npm run smoke` ahora crea/elimina D1 y R2 temporales y nunca usa datos personales. Para apuntar de forma explícita a un Worker levantado existe `npm run smoke:local`.

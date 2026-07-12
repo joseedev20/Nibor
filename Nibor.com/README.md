@@ -58,11 +58,10 @@ npx wrangler r2 bucket create nibor-files
 Copiar el `database_id` que devuelve Cloudflare y reemplazarlo en `wrangler.toml`.
 El bucket `nibor-files` queda conectado al binding `FILES` para PDFs de Vehículos.
 
-Aplicar esquema y datos históricos remotos:
+Aplicar esquema remoto. Para migrar una D1 local existente, exportar sus datos con `wrangler d1 export --local --no-schema` e importarlos en la D1 remota después de aplicar las migraciones; no usar el seed histórico como reemplazo de datos personales:
 
 ```powershell
 npm run db:migrate:remote
-npm run db:seed:remote
 ```
 
 Desplegar Worker + assets de Vite:

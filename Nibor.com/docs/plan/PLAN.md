@@ -27,7 +27,7 @@
 
 **Decisión de seguridad (2026-07-12):**
 - La aplicación completa y `/api/*` serán privadas mediante Cloudflare Access antes del primer deploy.
-- Solo se autoriza el correo exacto del propietario, inicialmente con One-time PIN.
+- Se autorizan solo `Joseedev20@gmail.com` y `joseeborja20@hotmail.com`, inicialmente con One-time PIN.
 - `workers.dev` y Preview URLs permanecen desactivadas; el deploy exige confirmación explícita de que Access ya está configurado.
 - El feed iCalendar no se publica con bypass mientras no exista una URL secreta rotatoria; la privacidad prevalece sobre la suscripción remota.
 

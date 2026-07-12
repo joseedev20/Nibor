@@ -5,10 +5,10 @@ Nibor.com contiene información financiera y de salud. La aplicación completa, 
 ## Decisión
 
 - Cloudflare Access es el login de producción.
-- Solo se autoriza el correo exacto del propietario; no se permiten dominios completos ni `Everyone`.
+- Solo se autorizan correos exactos de los propietarios; no se permiten dominios completos ni `Everyone`.
 - El método inicial será One-time PIN: Cloudflare envía un código de un solo uso al correo autorizado.
 - `workers.dev` y las Preview URLs están desactivadas en `wrangler.toml` para evitar accesos alternativos.
-- El Worker no se despliega hasta confirmar expresamente que Access ya protege `nibor.com`.
+- El Worker no se despliega hasta confirmar expresamente que Access ya protege `niborapp.com`.
 
 Access valida cada solicitud antes de servir Vue o ejecutar la API. Una pantalla de login hecha únicamente en el frontend no sería una protección real porque un atacante podría llamar `/api/*` directamente.
 
@@ -17,19 +17,19 @@ Access valida cada solicitud antes de servir Vue o ejecutar la API. Una pantalla
 1. En Cloudflare, abrir **Zero Trust > Integrations > Identity providers**.
 2. Agregar **One-time PIN** como método de identidad.
 3. Abrir **Access controls > Applications** y crear una aplicación web/self-hosted para:
-   - `nibor.com`
-   - `www.nibor.com` solo si también se usará ese hostname.
+   - `niborapp.com`
+   - `www.niborapp.com` solo si también se usará ese hostname.
 4. Crear una política con:
    - Acción: `Allow`.
-   - Include: `Emails` y el correo exacto del propietario.
+   - Include: `Emails` y cada correo exacto autorizado.
    - Require: `Login Methods` → `One-time PIN`.
-   - Duración sugerida de sesión: 24 horas.
+   - Duración de sesión: 1 semana.
 5. No usar `Include Everyone`, `Emails ending in` ni `Login Methods` como única condición.
 6. Crear/asociar el Custom Domain del Worker solamente después de guardar la política de Access.
 7. Verificar en una ventana privada:
-   - El correo autorizado recibe el PIN y entra.
+   - Los correos autorizados son `Joseedev20@gmail.com` y `joseeborja20@hotmail.com`; cada uno recibe el PIN y entra.
    - Otro correo no recibe un PIN válido ni puede ver HTML, API o archivos.
-   - Abrir directamente `https://nibor.com/api/health` también exige login.
+   - Abrir directamente `https://niborapp.com/api/health` también exige login.
 8. Confirmar el deploy en PowerShell y desplegar:
 
 ```powershell
