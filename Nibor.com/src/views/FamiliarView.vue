@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 
 const members = ref([])
 const loading = ref(true)
@@ -9,6 +9,8 @@ const saving = ref(false)
 const editorError = ref('')
 const uploadingId = ref(null)
 const previewMember = ref(null)
+const copiedMemberId = ref(null)
+let copyFeedbackTimer = null
 
 const DOCUMENT_TYPES = [
   { value: 'cedula_ciudadania', label: 'Cédula de ciudadanía' },
@@ -167,6 +169,19 @@ function documentTypeLabel(value) {
   return DOCUMENT_TYPES.find((item) => item.value === value)?.label ?? 'Documento'
 }
 
+async function copyDocumentNumber(member) {
+  try {
+    await navigator.clipboard.writeText(member.numero_documento)
+    copiedMemberId.value = member.id
+    window.clearTimeout(copyFeedbackTimer)
+    copyFeedbackTimer = window.setTimeout(() => {
+      copiedMemberId.value = null
+    }, 2000)
+  } catch {
+    pageError.value = 'No se pudo copiar el número. Revisa el permiso del portapapeles e inténtalo de nuevo.'
+  }
+}
+
 function formatFileSize(value) {
   const bytes = Number(value ?? 0)
   if (!bytes) return ''
@@ -176,6 +191,7 @@ function formatFileSize(value) {
 }
 
 onMounted(loadMembers)
+onBeforeUnmount(() => window.clearTimeout(copyFeedbackTimer))
 </script>
 
 <template>
@@ -223,7 +239,26 @@ onMounted(loadMembers)
 
         <div class="border-t border-zinc-100 px-5 py-4 dark:border-zinc-800">
           <p class="text-xs font-medium uppercase tracking-wide text-zinc-400">{{ documentTypeLabel(member.tipo_documento) }}</p>
-          <p class="mt-1 break-all font-mono text-lg font-semibold tracking-wide text-zinc-900 dark:text-zinc-100">{{ member.numero_documento }}</p>
+          <div class="mt-1 flex items-center gap-2">
+            <p class="min-w-0 flex-1 break-all font-mono text-lg font-semibold tracking-wide text-zinc-900 dark:text-zinc-100">{{ member.numero_documento }}</p>
+            <button
+              type="button"
+              class="flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 text-xs font-semibold text-zinc-600 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-emerald-800 dark:hover:bg-emerald-950 dark:hover:text-emerald-400"
+              :class="copiedMemberId === member.id ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400' : ''"
+              :aria-label="`Copiar número de documento de ${member.nombre}`"
+              :title="copiedMemberId === member.id ? 'Número copiado' : 'Copiar número'"
+              @click="copyDocumentNumber(member)"
+            >
+              <svg v-if="copiedMemberId !== member.id" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                <rect x="9" y="9" width="11" height="11" rx="2" />
+                <path d="M15 9V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7a2 2 0 002 2h3" />
+              </svg>
+              <svg v-else class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="M5 12l4 4L19 6" />
+              </svg>
+              <span>{{ copiedMemberId === member.id ? 'Copiado' : 'Copiar' }}</span>
+            </button>
+          </div>
           <p v-if="member.notas" class="mt-3 whitespace-pre-line text-sm text-zinc-500 dark:text-zinc-400">{{ member.notas }}</p>
         </div>
 
