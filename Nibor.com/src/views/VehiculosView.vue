@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { formatCOP, formatDate } from '../utils/format.js'
 import NotificationModuleSettings from '../components/NotificationModuleSettings.vue'
+import { useIsDark } from '../composables/useIsDark.js'
 
 const now = new Date()
 const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
@@ -14,6 +15,7 @@ const saving = ref(false)
 const uploadingItemId = ref(null)
 const error = ref('')
 const notice = ref('')
+const isDark = useIsDark()
 
 const vehicleEditorOpen = ref(false)
 const vehicleForm = ref(emptyVehicleForm())
@@ -24,6 +26,7 @@ const gastoForm = ref(emptyGastoForm())
 const editorError = ref('')
 
 const activeVehicle = computed(() => vehicles.value.find((v) => v.id === activeId.value) ?? null)
+const chartMode = computed(() => (isDark.value ? 'dark' : 'light'))
 
 const TIPO_EMOJI = { carro: '🚗', moto: '🏍️', otro: '🚙' }
 
@@ -32,6 +35,14 @@ const ESTADOS = {
   por_vencer: { label: 'Por vencer', class: 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-400', ring: 'border-amber-300 dark:border-amber-800' },
   vencida: { label: 'Vencida', class: 'bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-400', ring: 'border-rose-300 dark:border-rose-800' },
   por_configurar: { label: 'Por configurar', class: 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400', ring: 'border-zinc-200 dark:border-zinc-800' },
+}
+
+const EXPIRY_CYCLE_DAYS = 365
+const GAUGE_COLORS = {
+  vigente: { light: '#047857', dark: '#10b981' },
+  por_vencer: { light: '#b45309', dark: '#f59e0b' },
+  vencida: { light: '#be123c', dark: '#fb7185' },
+  por_configurar: { light: '#a1a1aa', dark: '#52525b' },
 }
 
 function emptyVehicleForm() {
@@ -275,6 +286,65 @@ function venceLabel(item) {
   return `Vence el ${formatDate(item.vence)}`
 }
 
+function normalizeItemName(value) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
+
+function isExpiryGaugeItem(item) {
+  const name = normalizeItemName(item.nombre)
+  return name.includes('soat') || name.includes('tecnomecanica') || (name.includes('tecnico') && name.includes('mecanica'))
+}
+
+function gaugeColor(item) {
+  const color = GAUGE_COLORS[item.estado] ?? GAUGE_COLORS.por_configurar
+  return color[chartMode.value]
+}
+
+function remainingDays(item) {
+  const days = Number(item.dias_restantes)
+  return Number.isFinite(days) ? days : null
+}
+
+function gaugeCenterText(item) {
+  const days = remainingDays(item)
+  if (days === null) return '--'
+  return String(Math.max(0, days))
+}
+
+function gaugeSubtext(item) {
+  return remainingDays(item) === null ? 'sin fecha' : 'días'
+}
+
+function gaugeHeadline(item) {
+  const days = remainingDays(item)
+  if (days === null) return 'Sin fecha'
+  if (days < 0) return `Vencido hace ${Math.abs(days)} días`
+  if (days === 0) return 'Vence hoy'
+  return `Faltan ${days} días`
+}
+
+function gaugeDetail(item) {
+  if (!item.vence) return 'Configura vencimiento'
+  return `Vence el ${formatDate(item.vence)}`
+}
+
+function gaugePercent(item) {
+  const days = remainingDays(item)
+  if (days === null || days <= 0) return 100
+  return Math.max(2, Math.min(100, Math.round((Math.min(days, EXPIRY_CYCLE_DAYS) / EXPIRY_CYCLE_DAYS) * 100)))
+}
+
+function gaugeRingStyle(item) {
+  const percent = gaugePercent(item)
+  const track = chartMode.value === 'dark' ? '#3f3f46' : '#e4e4e7'
+  return {
+    background: `conic-gradient(${gaugeColor(item)} 0% ${percent}%, ${track} ${percent}% 100%)`,
+  }
+}
+
 onMounted(loadVehicles)
 </script>
 
@@ -353,6 +423,19 @@ onMounted(loadVehicles)
               <span class="shrink-0 rounded-full px-2 py-1 text-xs font-semibold" :class="ESTADOS[item.estado]?.class">
                 {{ ESTADOS[item.estado]?.label }}
               </span>
+            </div>
+
+            <div v-if="isExpiryGaugeItem(item)" class="mt-4 flex items-center gap-4">
+              <div class="relative h-24 w-24 shrink-0 rounded-full" :style="gaugeRingStyle(item)">
+                <div class="absolute inset-3 flex flex-col items-center justify-center rounded-full bg-white text-center dark:bg-zinc-900">
+                  <span class="text-xl font-extrabold leading-none text-zinc-900 dark:text-zinc-100">{{ gaugeCenterText(item) }}</span>
+                  <span class="mt-1 text-[10px] font-semibold uppercase text-zinc-500 dark:text-zinc-400">{{ gaugeSubtext(item) }}</span>
+                </div>
+              </div>
+              <div class="min-w-0">
+                <p class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{{ gaugeHeadline(item) }}</p>
+                <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">{{ gaugeDetail(item) }}</p>
+              </div>
             </div>
 
             <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
