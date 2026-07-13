@@ -101,6 +101,7 @@ Notas técnicas para Fase 1:
 
 - [x] 2026-07-12 15:05 Familiar MVP: migración `0022_family.sql`, API `/api/family`, PDFs privados en R2, vista `/familiar`, navegación y smoke. Decisión: mostrar el número completo porque el usuario lo necesita a mano; no incluir ningún dato familiar real en migraciones ni pruebas. D1 remota migrada; `npm test`, build, smoke aislado y responsive 390 px OK.
 - [x] 2026-07-12 15:18 Familiar: botón para copiar el número de documento con confirmación visual `Copiado` y manejo de error del portapapeles.
+- [x] 2026-07-12 21:17 Recuperación producción: una ejecución de Codex desplegó desde la copia obsoleta no-Git `Escritorio\Nibor.com` y reemplazó Familiar. Se restauró producción desde el repo Git (versión `0391e98f`) y la copia local se aisló como Worker `nibor-finanzas-local` para que no pueda volver a sobrescribir `niborapp.com`.
 
 - 2026-07-04: Codex recomienda y adopta Cloudflare D1 para este proyecto. La API se implementará como Cloudflare Worker/Hono sobre binding `env.DB`; no Express/better-sqlite3 en el runtime objetivo.
 - 2026-07-04 11:50: Se agregó endpoint `/api/categories` aunque el CRUD UI aparece en Fase 4, porque el store y movimientos/suscripciones necesitan el catálogo desde Fase 1.
