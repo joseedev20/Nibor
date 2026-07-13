@@ -636,7 +636,17 @@ async function run() {
     throw new Error('Validacion de fecha real en eventos no devolvio error esperado')
   }
 
-  const icsResponse = await fetch(`${baseUrl}/events/calendar.ics`)
+  const calendarUrlResponse = await fetch(`${baseUrl}/events/calendar-url`)
+  const calendarUrlJson = await calendarUrlResponse.json()
+  const calendarHttpsUrl = calendarUrlJson?.data?.https_url
+  if (!calendarUrlResponse.ok || !calendarHttpsUrl?.includes('token=smoke-calendar-token')) {
+    throw new Error('URL privada del calendario no incluyo el token configurado')
+  }
+
+  const deniedIcsResponse = await fetch(`${baseUrl}/events/calendar.ics?token=incorrecto`)
+  if (deniedIcsResponse.status !== 404) throw new Error('Feed ICS acepto un token incorrecto')
+
+  const icsResponse = await fetch(calendarHttpsUrl)
   const icsText = await icsResponse.text()
   if (!icsResponse.ok || !icsText.includes('BEGIN:VCALENDAR') || !icsText.includes(editedEvent.uid)) {
     throw new Error('Feed ICS no incluyo calendario/evento smoke')

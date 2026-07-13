@@ -15,9 +15,11 @@ const editorOpen = ref(false)
 const editorError = ref('')
 const showPast = ref(false)
 const form = ref(emptyForm())
+const calendarFeed = ref(null)
+const feedError = ref('')
 
-const icsUrl = computed(() => `${window.location.origin}/api/events/calendar.ics`)
-const webcalUrl = computed(() => icsUrl.value.replace(/^https?:\/\//, 'webcal://'))
+const icsUrl = computed(() => calendarFeed.value?.https_url ?? '')
+const webcalUrl = computed(() => calendarFeed.value?.webcal_url ?? '')
 
 const upcoming = computed(() => events.value.filter((e) => e.fecha >= todayIso))
 const past = computed(() => events.value.filter((e) => e.fecha < todayIso).reverse())
@@ -67,6 +69,16 @@ async function loadEvents() {
     error.value = err.message
   } finally {
     loading.value = false
+  }
+}
+
+async function loadCalendarFeed() {
+  feedError.value = ''
+  try {
+    calendarFeed.value = await fetchJson('/api/events/calendar-url')
+  } catch (err) {
+    calendarFeed.value = null
+    feedError.value = err.message
   }
 }
 
@@ -146,6 +158,7 @@ async function deleteEvent() {
 }
 
 async function copyIcsUrl() {
+  if (!webcalUrl.value) return
   try {
     await navigator.clipboard.writeText(webcalUrl.value)
     notice.value = 'URL webcal copiada — pégala en iPhone: Ajustes → Calendario → Cuentas → Añadir suscripción.'
@@ -164,7 +177,10 @@ function horaLabel(event) {
   return `${event.hora} – ${end}`
 }
 
-onMounted(loadEvents)
+onMounted(() => {
+  loadEvents()
+  loadCalendarFeed()
+})
 </script>
 
 <template>
@@ -196,18 +212,24 @@ onMounted(loadEvents)
             Ajustes → Apps → Calendario → Cuentas → Añadir cuenta → Otra → Añadir suscripción de calendario, y pega la URL.
             Los cambios que hagas aquí (fechas, horas, títulos) se actualizan solos en el teléfono.
           </p>
-          <p class="mt-2 truncate rounded bg-zinc-100 px-2 py-1 font-mono text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{{ webcalUrl }}</p>
+          <p v-if="webcalUrl" class="mt-2 rounded bg-zinc-100 px-2 py-1 text-xs font-medium text-emerald-700 dark:bg-zinc-800 dark:text-emerald-400">
+            🔒 URL privada lista para conectar tu calendario
+          </p>
+          <p v-else class="mt-2 rounded bg-rose-50 px-2 py-1 text-xs text-rose-700 dark:bg-rose-950 dark:text-rose-300">{{ feedError || 'Preparando URL privada…' }}</p>
         </div>
-        <div class="flex shrink-0 gap-2">
-          <button type="button" class="h-9 rounded-lg border border-zinc-200 px-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800" @click="copyIcsUrl">
+        <div class="flex shrink-0 flex-wrap gap-2">
+          <button type="button" class="h-9 rounded-lg border border-zinc-200 px-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800" :disabled="!webcalUrl" @click="copyIcsUrl">
             Copiar URL
           </button>
-          <a :href="icsUrl" download="nibor.ics" class="flex h-9 items-center rounded-lg bg-zinc-900 px-3 text-sm font-medium text-white transition hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-white">
+          <a v-if="webcalUrl" :href="webcalUrl" class="flex h-9 items-center rounded-lg bg-emerald-600 px-3 text-sm font-medium text-white transition hover:bg-emerald-500">
+            Abrir en Calendario
+          </a>
+          <a v-if="icsUrl" :href="icsUrl" download="nibor.ics" class="flex h-9 items-center rounded-lg bg-zinc-900 px-3 text-sm font-medium text-white transition hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-white">
             Descargar .ics
           </a>
         </div>
       </div>
-      <p class="mt-2 text-xs text-amber-700 dark:text-amber-400">⚠️ La suscripción en vivo del iPhone funcionará cuando la app esté publicada en Cloudflare (la URL local solo sirve dentro de tu PC). Mientras tanto puedes descargar el .ics e importarlo.</p>
+      <p class="mt-2 text-xs text-zinc-500 dark:text-zinc-400">La URL contiene una llave privada. No la compartas: quien la tenga podrá ver los eventos del calendario. Puedes rotarla si alguna vez se filtra.</p>
     </section>
 
     <!-- Próximos por mes -->

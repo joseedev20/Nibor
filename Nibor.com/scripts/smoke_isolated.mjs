@@ -109,6 +109,8 @@ try {
     stateDir,
     '--log-level',
     'warn',
+    '--var',
+    'CALENDAR_FEED_TOKEN:smoke-calendar-token',
     '--show-interactive-dev-session=false',
   ], {
     ...commandOptions,

@@ -138,6 +138,22 @@ function icsEscape(text) {
     .replace(/\r?\n/g, '\\n')
 }
 
+function calendarFeedToken(c) {
+  return String(c.env.CALENDAR_FEED_TOKEN ?? '').trim()
+}
+
+events.get('/calendar-url', (c) => {
+  const token = calendarFeedToken(c)
+  if (!token) return fail(c, 'La suscripción móvil del calendario no está configurada', 503)
+
+  const url = new URL(c.req.url)
+  const httpsUrl = `${url.origin}/api/events/calendar.ics?token=${encodeURIComponent(token)}`
+  return ok(c, {
+    https_url: httpsUrl,
+    webcal_url: httpsUrl.replace(/^https:\/\//, 'webcal://'),
+  })
+})
+
 function icsDate(fecha) {
   return fecha.replaceAll('-', '')
 }
@@ -162,6 +178,12 @@ function nextDay(fecha) {
 }
 
 events.get('/calendar.ics', async (c) => {
+  const expectedToken = calendarFeedToken(c)
+  const providedToken = String(c.req.query('token') ?? '')
+  if (!expectedToken || providedToken !== expectedToken) {
+    return fail(c, 'Calendario no encontrado', 404)
+  }
+
   const rows = await all(
     c.env.DB,
     `SELECT id, titulo, descripcion, fecha, hora, duracion_min, lugar, recordatorio_min, uid, created_at, updated_at
@@ -210,7 +232,9 @@ events.get('/calendar.ics', async (c) => {
   return c.body(lines.join('\r\n') + '\r\n', 200, {
     'content-type': 'text/calendar; charset=utf-8',
     'content-disposition': 'inline; filename="nibor.ics"',
-    'cache-control': 'no-cache',
+    'cache-control': 'private, no-store, no-cache, must-revalidate',
+    'referrer-policy': 'no-referrer',
+    'x-content-type-options': 'nosniff',
   })
 })
 

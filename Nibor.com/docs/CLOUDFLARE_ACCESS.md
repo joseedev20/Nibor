@@ -51,7 +51,9 @@ Cloudflare elimina la sesión y vuelve a exigir autenticación.
 
 ## iCalendar
 
-No crear una política `Bypass` para `/api/events/calendar.ics`: el feed contiene eventos personales. Con Access protegiendo todo el dominio, la suscripción automática de iPhone puede requerir una solución posterior con URL secreta rotatoria. Hasta implementarla y probarla, se prioriza privacidad y el feed remoto permanece detrás del login.
+La suscripción automática del celular usa una URL con token rotatorio guardado como secreto `CALENDAR_FEED_TOKEN` en el Worker. La ruta autenticada `/api/events/calendar-url` entrega esa URL únicamente dentro de Nibor.
+
+Cloudflare Access puede tener una aplicación adicional para la ruta exacta `/api/events/calendar.ics` con política `Bypass` para `Everyone`. El bypass solo evita el login OTP en esa ruta; el Worker exige el token correcto y devuelve 404 si falta o es inválido. No ampliar el bypass a `/api/events/*` ni guardar el token en Git. Si la URL se comparte accidentalmente, rotar el secreto y volver a suscribir el calendario.
 
 ## Referencias oficiales
 

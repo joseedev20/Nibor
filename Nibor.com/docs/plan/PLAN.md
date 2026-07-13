@@ -29,7 +29,7 @@
 - La aplicación completa y `/api/*` serán privadas mediante Cloudflare Access antes del primer deploy.
 - Se autorizan solo `Joseedev20@gmail.com` y `joseeborja20@hotmail.com`, inicialmente con One-time PIN.
 - `workers.dev` y Preview URLs permanecen desactivadas; el deploy exige confirmación explícita de que Access ya está configurado.
-- El feed iCalendar no se publica con bypass mientras no exista una URL secreta rotatoria; la privacidad prevalece sobre la suscripción remota.
+- El feed iCalendar usa una URL con token secreto rotatorio almacenado como `CALENDAR_FEED_TOKEN`; solo `/api/events/calendar.ics` puede omitir el login de Access y el Worker rechaza solicitudes sin el token correcto.
 
 ## 2. Secciones de la app
 
@@ -200,7 +200,7 @@ family_members   (id, nombre, parentesco, tipo_documento, numero_documento, nota
 - `GET/POST/PUT/DELETE /api/loans` administra préstamos personales y devuelve resumen calculado; `POST /api/loans/:id/return` marca un préstamo como devuelto.
 - `GET /api/salud` devuelve perfil, medidas, condiciones, medicamentos, citas, visión y resumen calculado; subrutas REST: `/profile`, `/measurements`, `/conditions`, `/medications`, `/appointments`, `/vision`.
 - `GET/POST/PUT/DELETE /api/habits` administra hábitos; subrutas: `/today`, `/:id/check`, `/:id/defer`, `/reorder`, `/progress`, `/activity?module=salud|knowledge`. La migración vieja se ejecuta con `npm run habits:import:local`.
-- `GET/POST/PUT/DELETE /api/events` administra eventos; `GET /api/events/calendar.ics` expone el feed iCalendar para suscripción.
+- `GET/POST/PUT/DELETE /api/events` administra eventos; `GET /api/events/calendar-url` entrega la URL privada al usuario autenticado y `GET /api/events/calendar.ics?token=` expone el feed iCalendar solo con el token secreto correcto.
 - `GET/POST/PUT/DELETE /api/vehicles` administra vehículos; subrutas para documentos, PDF en R2 y gastos: `/items`, `/items/:id/file`, `/:id/gastos`.
 - `GET /api/notifications` lista notificaciones y `no_leidas`; acepta `fecha=YYYY-MM-DD` opcional para diagnostico/smoke. Subrutas: `/run`, `/:id/read`, `/read-all`, `/settings`, `/test-push`. `POST /api/notifications/run` acepta `hora`/`minuto`/`fecha` opcionales para smoke y devuelve `push_enviadas`, `push_retenidas`, `en_silencio` y `pausado`.
 - `GET/POST/PUT/DELETE /api/family` administra familiares; `POST/GET/DELETE /api/family/:id/file` guarda, muestra/descarga y elimina el PDF privado en R2.
