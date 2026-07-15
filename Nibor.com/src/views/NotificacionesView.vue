@@ -2,8 +2,22 @@
 import { computed, onMounted, ref } from 'vue'
 import { formatDate } from '../utils/format.js'
 
-const today = new Date()
-const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+const PAGE_SIZE = 5
+
+function bogotaIsoDate(daysAgo = 0) {
+  const date = new Date(Date.now() - (daysAgo * 86400000))
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Bogota',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date)
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  return `${value.year}-${value.month}-${value.day}`
+}
+
+const todayIso = bogotaIsoDate()
+const yesterdayIso = bogotaIsoDate(1)
 
 const notifications = ref([])
 const unread = ref(0)
@@ -15,6 +29,7 @@ const running = ref(false)
 const error = ref('')
 const notice = ref('')
 const runSummary = ref(null)
+const visibleCount = ref(PAGE_SIZE)
 
 const typeMeta = {
   suscripcion: { label: 'Suscripción', letter: 'S', class: 'bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-300' },
@@ -132,18 +147,24 @@ const runDetail = computed(() => {
   return `${runSummary.value.nuevas} nuevas - ${runSummary.value.push_enviadas} push enviadas - ${retained} retenidas`
 })
 
+const visibleNotifications = computed(() => notifications.value.slice(0, visibleCount.value))
+const remainingNotifications = computed(() => Math.max(0, notifications.value.length - visibleCount.value))
 const groupedNotifications = computed(() => [
   {
     key: 'today',
     title: 'Hoy',
-    items: notifications.value.filter((notification) => notification.fecha === todayIso),
+    items: visibleNotifications.value.filter((notification) => notification.fecha === todayIso),
   },
   {
-    key: 'previous',
-    title: 'Anteriores',
-    items: notifications.value.filter((notification) => notification.fecha !== todayIso),
+    key: 'yesterday',
+    title: 'Ayer',
+    items: visibleNotifications.value.filter((notification) => notification.fecha === yesterdayIso),
   },
 ].filter((group) => group.items.length))
+
+function showMoreNotifications() {
+  visibleCount.value += PAGE_SIZE
+}
 
 function emptySettings() {
   return {
@@ -277,8 +298,9 @@ function emitChanged() {
 }
 
 async function loadNotifications() {
-  const data = await fetchJson('/api/notifications?limit=100')
+  const data = await fetchJson(`/api/notifications?desde=${yesterdayIso}&limit=200`)
   notifications.value = data.notificaciones ?? []
+  visibleCount.value = PAGE_SIZE
   unread.value = Number(data.no_leidas ?? 0)
   emitChanged()
 }
@@ -474,6 +496,7 @@ onMounted(() => loadAll({ run: true }))
       <div class="flex flex-col gap-3 border-b border-zinc-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-zinc-800">
         <div>
           <h2 class="text-sm font-semibold">Bandeja</h2>
+          <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">Mostrando avisos de hoy y ayer.</p>
           <p v-if="runSummary" class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">Última revisión: {{ formatDate(runSummary.fecha) }} - {{ runDetail }}.</p>
         </div>
         <button type="button" class="h-9 rounded-lg border border-zinc-200 px-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800" :disabled="unread === 0" @click="markAllRead">
@@ -516,6 +539,15 @@ onMounted(() => loadAll({ run: true }))
             </button>
           </article>
         </section>
+        <div v-if="remainingNotifications > 0" class="flex justify-center border-t border-zinc-100 px-4 py-4 dark:border-zinc-800">
+          <button
+            type="button"
+            class="h-10 rounded-lg border border-zinc-200 px-4 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            @click="showMoreNotifications"
+          >
+            Mostrar más ({{ remainingNotifications }})
+          </button>
+        </div>
       </div>
     </section>
 

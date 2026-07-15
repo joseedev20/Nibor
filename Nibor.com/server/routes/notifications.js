@@ -437,22 +437,28 @@ export async function runChecks(env, overrides = {}) {
 notifications.get('/', async (c) => {
   const limit = toInteger(c.req.query('limit'), 50)
   const fecha = c.req.query('fecha')
+  const desde = c.req.query('desde')
   const hasFecha = fecha !== undefined && fecha !== ''
+  const hasDesde = desde !== undefined && desde !== ''
   if (hasFecha && !isRealIsoDate(fecha)) return fail(c, 'fecha debe ser YYYY-MM-DD real')
-  const params = hasFecha ? [fecha, Math.min(Math.max(limit, 1), 200)] : [Math.min(Math.max(limit, 1), 200)]
+  if (hasDesde && !isRealIsoDate(desde)) return fail(c, 'desde debe ser YYYY-MM-DD real')
+
+  const where = hasFecha ? 'WHERE fecha = ?' : hasDesde ? 'WHERE fecha >= ?' : ''
+  const filterParams = hasFecha ? [fecha] : hasDesde ? [desde] : []
+  const params = [...filterParams, Math.min(Math.max(limit, 1), 200)]
   const rows = await all(
     c.env.DB,
     `SELECT id, tipo, titulo, mensaje, fecha, leida, push_enviada, created_at
      FROM notifications
-     ${hasFecha ? 'WHERE fecha = ?' : ''}
+     ${where}
      ORDER BY fecha DESC, id DESC
      LIMIT ?`,
     ...params,
   )
   const unread = await first(
     c.env.DB,
-    `SELECT COUNT(*) AS n FROM notifications WHERE leida = 0${hasFecha ? ' AND fecha = ?' : ''}`,
-    ...(hasFecha ? [fecha] : []),
+    `SELECT COUNT(*) AS n FROM notifications WHERE leida = 0${where ? ` AND ${where.replace('WHERE ', '')}` : ''}`,
+    ...filterParams,
   )
   return ok(c, { notificaciones: rows, no_leidas: Number(unread?.n ?? 0) })
 })

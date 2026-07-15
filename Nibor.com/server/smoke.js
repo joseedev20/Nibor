@@ -953,6 +953,15 @@ async function run() {
       throw new Error('Notificaciones no incluyeron habito smoke en revision manual dentro del intervalo')
     }
 
+    const notificationRange = await request(`/notifications?desde=${notificationSmokeDate}&limit=200`)
+    if (!notificationRange.notificaciones.length || notificationRange.notificaciones.some((item) => item.fecha < notificationSmokeDate)) {
+      throw new Error('Filtro desde de notificaciones devolvio fechas fuera del rango')
+    }
+    const invalidNotificationRange = await expectFailure(`/notifications?desde=${smokeYear}-02-30`)
+    if (!String(invalidNotificationRange.error ?? '').includes('desde')) {
+      throw new Error('Notificaciones no rechazaron una fecha desde imposible')
+    }
+
     const smokeUnreadNotifications = notificationList.notificaciones.filter((item) => (
       Number(item.leida) === 0
       && (
