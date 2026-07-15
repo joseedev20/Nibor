@@ -6,7 +6,12 @@ import { all, fail, first, isNonNegative, isValidDate, ok, readJson, run, toInte
 const vehicles = new Hono()
 
 const VALID_TIPOS = new Set(['carro', 'moto', 'otro'])
-const DEFAULT_ITEMS = ['Seguro SOAT', 'Técnico mecánica']
+const DEFAULT_ITEMS = [
+  { nombre: 'Seguro SOAT', requiere_vencimiento: 1 },
+  { nombre: 'Técnico mecánica', requiere_vencimiento: 1 },
+  { nombre: 'Tarjeta de propiedad', requiere_vencimiento: 0 },
+]
+const LICENSE_CATEGORIES = new Set(['A1', 'A2', 'B1', 'B2', 'B3', 'C1', 'C2', 'C3'])
 const MAX_FILE_BYTES = 10 * 1024 * 1024 // 10 MB
 
 function todayBogota() {
@@ -20,6 +25,9 @@ function daysBetween(desde, hasta) {
 
 // Estado del item: por_configurar (sin fecha), vencida, por_vencer (≤30 días), vigente
 function computeItem(item, hoy) {
+  if (Number(item.requiere_vencimiento) === 0) {
+    return { ...item, estado: 'sin_vencimiento', dias_restantes: null }
+  }
   if (!item.vence) return { ...item, estado: 'por_configurar', dias_restantes: null }
   const dias = daysBetween(hoy, item.vence)
   const estado = dias < 0 ? 'vencida' : dias <= 30 ? 'por_vencer' : 'vigente'
@@ -31,7 +39,7 @@ async function getVehicleFull(db, id, hoy) {
   if (!vehicle) return null
   const items = await all(
     db,
-    `SELECT id, vehicle_id, nombre, vence, notas, file_key, file_name, file_size, updated_at
+    `SELECT id, vehicle_id, nombre, vence, notas, requiere_vencimiento, file_key, file_name, file_size, updated_at
      FROM vehicle_items WHERE vehicle_id = ?
      ORDER BY vence IS NULL, vence ASC, nombre ASC`,
     id,
@@ -49,6 +57,29 @@ async function getVehicleFull(db, id, hoy) {
   }
 }
 
+function computeLicenseCategory(category, hoy) {
+  const computed = computeItem({ ...category, requiere_vencimiento: 1 }, hoy)
+  return {
+    ...computed,
+    tipo_vehiculo: category.categoria.startsWith('A') ? 'moto' : 'carro',
+  }
+}
+
+async function getDriverLicense(db, hoy) {
+  const license = await first(db, 'SELECT * FROM driver_licenses WHERE id = 1')
+  const categories = await all(
+    db,
+    `SELECT id, license_id, categoria, vence, notas, created_at, updated_at
+     FROM driver_license_categories
+     WHERE license_id = 1
+     ORDER BY categoria ASC`,
+  )
+  return {
+    ...(license ?? { id: 1, file_key: null, file_name: null, file_size: null, notas: null }),
+    categories: categories.map((category) => computeLicenseCategory(category, hoy)),
+  }
+}
+
 vehicles.get('/', async (c) => {
   const hoy = todayBogota()
   const rows = await all(c.env.DB, 'SELECT id FROM vehicles ORDER BY activa DESC, nombre ASC')
@@ -57,6 +88,136 @@ vehicles.get('/', async (c) => {
     data.push(await getVehicleFull(c.env.DB, row.id, hoy))
   }
   return ok(c, data)
+})
+
+// ── Licencia de conducción personal ───────────────────────────────────────
+
+vehicles.get('/license', async (c) => {
+  return ok(c, await getDriverLicense(c.env.DB, todayBogota()))
+})
+
+vehicles.post('/license/categories', async (c) => {
+  const body = await readJson(c)
+  if (!body) return fail(c, 'Body JSON inválido')
+
+  const categoria = String(body.categoria ?? '').trim().toUpperCase()
+  const vence = String(body.vence ?? '').trim()
+  const notas = String(body.notas ?? '').trim() || null
+  if (!LICENSE_CATEGORIES.has(categoria)) return fail(c, 'La categoría debe ser A1, A2, B1, B2, B3, C1, C2 o C3')
+  if (!isValidDate(vence)) return fail(c, 'La fecha de vencimiento debe ser una fecha real YYYY-MM-DD')
+
+  const exists = await first(
+    c.env.DB,
+    'SELECT id FROM driver_license_categories WHERE license_id = 1 AND categoria = ?',
+    categoria,
+  )
+  if (exists) return fail(c, `La categoría ${categoria} ya está registrada`, 409)
+
+  const meta = await run(
+    c.env.DB,
+    `INSERT INTO driver_license_categories (license_id, categoria, vence, notas)
+     VALUES (1, ?, ?, ?)`,
+    categoria,
+    vence,
+    notas,
+  )
+  const category = await first(c.env.DB, 'SELECT * FROM driver_license_categories WHERE id = ?', meta.last_row_id)
+  return ok(c, computeLicenseCategory(category, todayBogota()), 201)
+})
+
+vehicles.put('/license/categories/:categoryId', async (c) => {
+  const categoryId = toInteger(c.req.param('categoryId'))
+  if (!Number.isInteger(categoryId)) return fail(c, 'ID inválido')
+  const current = await first(c.env.DB, 'SELECT * FROM driver_license_categories WHERE id = ?', categoryId)
+  if (!current) return fail(c, 'Categoría de licencia no encontrada', 404)
+
+  const body = await readJson(c)
+  if (!body) return fail(c, 'Body JSON inválido')
+  const categoria = body.categoria === undefined ? current.categoria : String(body.categoria).trim().toUpperCase()
+  const vence = body.vence === undefined ? current.vence : String(body.vence).trim()
+  const notas = body.notas === undefined ? current.notas : (String(body.notas).trim() || null)
+  if (!LICENSE_CATEGORIES.has(categoria)) return fail(c, 'La categoría debe ser A1, A2, B1, B2, B3, C1, C2 o C3')
+  if (!isValidDate(vence)) return fail(c, 'La fecha de vencimiento debe ser una fecha real YYYY-MM-DD')
+
+  const duplicate = await first(
+    c.env.DB,
+    'SELECT id FROM driver_license_categories WHERE license_id = 1 AND categoria = ? AND id <> ?',
+    categoria,
+    categoryId,
+  )
+  if (duplicate) return fail(c, `La categoría ${categoria} ya está registrada`, 409)
+
+  await run(
+    c.env.DB,
+    `UPDATE driver_license_categories
+     SET categoria = ?, vence = ?, notas = ?, updated_at = datetime('now')
+     WHERE id = ?`,
+    categoria,
+    vence,
+    notas,
+    categoryId,
+  )
+  const category = await first(c.env.DB, 'SELECT * FROM driver_license_categories WHERE id = ?', categoryId)
+  return ok(c, computeLicenseCategory(category, todayBogota()))
+})
+
+vehicles.delete('/license/categories/:categoryId', async (c) => {
+  const categoryId = toInteger(c.req.param('categoryId'))
+  if (!Number.isInteger(categoryId)) return fail(c, 'ID inválido')
+  const meta = await run(c.env.DB, 'DELETE FROM driver_license_categories WHERE id = ?', categoryId)
+  if (!meta.changes) return fail(c, 'Categoría de licencia no encontrada', 404)
+  return ok(c, { id: categoryId })
+})
+
+vehicles.post('/license/file', async (c) => {
+  const contentType = c.req.header('content-type') ?? ''
+  if (!contentType.includes('application/pdf')) return fail(c, 'Solo se aceptan archivos PDF')
+
+  const fileName = decodeURIComponent(c.req.header('x-file-name') ?? 'licencia-conduccion.pdf')
+  const buffer = await c.req.arrayBuffer()
+  if (!buffer.byteLength) return fail(c, 'El archivo está vacío')
+  if (buffer.byteLength > MAX_FILE_BYTES) return fail(c, 'El archivo no puede superar 10 MB')
+
+  const current = await first(c.env.DB, 'SELECT * FROM driver_licenses WHERE id = 1')
+  if (current?.file_key) await c.env.FILES.delete(current.file_key)
+
+  const key = `vehiculos/licencia/${Date.now()}-${fileName.replace(/[^\w.\-]+/g, '_')}`
+  await c.env.FILES.put(key, buffer, { httpMetadata: { contentType: 'application/pdf' } })
+  await run(
+    c.env.DB,
+    `UPDATE driver_licenses
+     SET file_key = ?, file_name = ?, file_size = ?, updated_at = datetime('now')
+     WHERE id = 1`,
+    key,
+    fileName,
+    buffer.byteLength,
+  )
+  return ok(c, await getDriverLicense(c.env.DB, todayBogota()), 201)
+})
+
+vehicles.get('/license/file', async (c) => {
+  const license = await first(c.env.DB, 'SELECT * FROM driver_licenses WHERE id = 1')
+  if (!license?.file_key) return fail(c, 'La licencia no tiene PDF adjunto', 404)
+  const object = await c.env.FILES.get(license.file_key)
+  if (!object) return fail(c, 'Archivo no encontrado en el almacenamiento', 404)
+  return c.body(object.body, 200, {
+    'content-type': 'application/pdf',
+    'content-disposition': `inline; filename="${(license.file_name ?? 'licencia-conduccion.pdf').replace(/"/g, '')}"`,
+    'cache-control': 'private, no-store',
+  })
+})
+
+vehicles.delete('/license/file', async (c) => {
+  const license = await first(c.env.DB, 'SELECT * FROM driver_licenses WHERE id = 1')
+  if (!license?.file_key) return fail(c, 'La licencia no tiene PDF adjunto', 404)
+  await c.env.FILES.delete(license.file_key)
+  await run(
+    c.env.DB,
+    `UPDATE driver_licenses
+     SET file_key = NULL, file_name = NULL, file_size = NULL, updated_at = datetime('now')
+     WHERE id = 1`,
+  )
+  return ok(c, { id: 1 })
 })
 
 vehicles.post('/', async (c) => {
@@ -81,8 +242,14 @@ vehicles.post('/', async (c) => {
   )
 
   // Items por defecto estilo R5 (quedan "por configurar" hasta poner fecha)
-  for (const itemName of DEFAULT_ITEMS) {
-    await run(c.env.DB, 'INSERT INTO vehicle_items (vehicle_id, nombre) VALUES (?, ?)', meta.last_row_id, itemName)
+  for (const item of DEFAULT_ITEMS) {
+    await run(
+      c.env.DB,
+      'INSERT INTO vehicle_items (vehicle_id, nombre, requiere_vencimiento) VALUES (?, ?, ?)',
+      meta.last_row_id,
+      item.nombre,
+      item.requiere_vencimiento,
+    )
   }
 
   return ok(c, await getVehicleFull(c.env.DB, meta.last_row_id, todayBogota()), 201)
@@ -153,17 +320,19 @@ vehicles.post('/:id/items', async (c) => {
   const nombre = String(body.nombre ?? '').trim()
   const vence = body.vence ? String(body.vence).trim() : null
   const notas = String(body.notas ?? '').trim() || null
+  const requiereVencimiento = body.requiere_vencimiento === false || Number(body.requiere_vencimiento) === 0 ? 0 : 1
 
   if (!nombre) return fail(c, 'El nombre del documento es obligatorio')
-  if (vence !== null && !isValidDate(vence)) return fail(c, 'La fecha de vencimiento debe ser una fecha real YYYY-MM-DD')
+  if (requiereVencimiento === 1 && vence !== null && !isValidDate(vence)) return fail(c, 'La fecha de vencimiento debe ser una fecha real YYYY-MM-DD')
 
   const meta = await run(
     c.env.DB,
-    'INSERT INTO vehicle_items (vehicle_id, nombre, vence, notas) VALUES (?, ?, ?, ?)',
+    'INSERT INTO vehicle_items (vehicle_id, nombre, vence, notas, requiere_vencimiento) VALUES (?, ?, ?, ?, ?)',
     vehicleId,
     nombre,
-    vence,
+    requiereVencimiento === 1 ? vence : null,
     notas,
+    requiereVencimiento,
   )
   const item = await first(c.env.DB, 'SELECT * FROM vehicle_items WHERE id = ?', meta.last_row_id)
   return ok(c, computeItem(item, todayBogota()), 201)
@@ -181,16 +350,20 @@ vehicles.put('/items/:itemId', async (c) => {
   const nombre = body.nombre === undefined ? current.nombre : String(body.nombre).trim()
   const vence = body.vence === undefined ? current.vence : (body.vence ? String(body.vence).trim() : null)
   const notas = body.notas === undefined ? current.notas : (String(body.notas).trim() || null)
+  const requiereVencimiento = body.requiere_vencimiento === undefined
+    ? Number(current.requiere_vencimiento)
+    : (body.requiere_vencimiento === false || Number(body.requiere_vencimiento) === 0 ? 0 : 1)
 
   if (!nombre) return fail(c, 'El nombre del documento es obligatorio')
-  if (vence !== null && !isValidDate(vence)) return fail(c, 'La fecha de vencimiento debe ser una fecha real YYYY-MM-DD')
+  if (requiereVencimiento === 1 && vence !== null && !isValidDate(vence)) return fail(c, 'La fecha de vencimiento debe ser una fecha real YYYY-MM-DD')
 
   await run(
     c.env.DB,
-    `UPDATE vehicle_items SET nombre = ?, vence = ?, notas = ?, updated_at = datetime('now') WHERE id = ?`,
+    `UPDATE vehicle_items SET nombre = ?, vence = ?, notas = ?, requiere_vencimiento = ?, updated_at = datetime('now') WHERE id = ?`,
     nombre,
-    vence,
+    requiereVencimiento === 1 ? vence : null,
     notas,
+    requiereVencimiento,
     itemId,
   )
   const item = await first(c.env.DB, 'SELECT * FROM vehicle_items WHERE id = ?', itemId)

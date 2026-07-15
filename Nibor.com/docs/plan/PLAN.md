@@ -103,6 +103,7 @@ Nibor.com es una app madre. Finanzas queda como el primer módulo productivo; lo
    - Control de carro/moto, documentos, SOAT, técnico mecánica, vencimientos y PDFs adjuntos
    - Estados de documentos calculados en backend: vigente, por vencer, vencida y por configurar
    - PDFs guardados en Cloudflare R2 con binding `FILES`; gastos integrados como `movements`
+   - Cada vehículo incluye Tarjeta de propiedad como documento permanente; la licencia de conducción es independiente del vehículo, admite un PDF único y varias categorías (A1/A2/B1/B2/B3/C1/C2/C3) con vencimientos distintos
    - Primer MVP en `/vehiculos`, con API `/api/vehicles`
 15. **Notificaciones**:
    - Centro in-app de notificaciones para suscripciones, hábitos, vehículos y eventos
@@ -173,6 +174,9 @@ events           (id, titulo, descripcion, fecha, hora, duracion_min, lugar, rec
 vehicles         (id, nombre, tipo, placa, color, activa, created_at, updated_at)
 vehicle_items    (id, vehicle_id, nombre, vence, notas, file_key, file_name, file_size, created_at, updated_at)
                  -- agregado en migración 0017; archivos PDF viven en R2 con binding FILES
+driver_licenses  (id, file_key, file_name, file_size, notas, created_at, updated_at)
+driver_license_categories (id, license_id, categoria, vence, notas, created_at, updated_at)
+                 -- agregado en migración 0023; un PDF de licencia y vencimiento independiente por categoría
 notifications    (id, tipo, titulo, mensaje, fecha, dedupe_key, leida, push_enviada, prioridad, sonido, created_at)
 notification_settings (clave, valor, updated_at)
 family_members   (id, nombre, parentesco, tipo_documento, numero_documento, notas, file_key, file_name, file_size, created_at, updated_at)
@@ -201,7 +205,7 @@ family_members   (id, nombre, parentesco, tipo_documento, numero_documento, nota
 - `GET /api/salud` devuelve perfil, medidas, condiciones, medicamentos, citas, visión y resumen calculado; subrutas REST: `/profile`, `/measurements`, `/conditions`, `/medications`, `/appointments`, `/vision`.
 - `GET/POST/PUT/DELETE /api/habits` administra hábitos; subrutas: `/today`, `/:id/check`, `/:id/defer`, `/reorder`, `/progress`, `/activity?module=salud|knowledge`. La migración vieja se ejecuta con `npm run habits:import:local`.
 - `GET/POST/PUT/DELETE /api/events` administra eventos; `GET /api/events/calendar-url` entrega la URL privada al usuario autenticado y `GET /api/events/calendar.ics?token=` expone el feed iCalendar solo con el token secreto correcto.
-- `GET/POST/PUT/DELETE /api/vehicles` administra vehículos; subrutas para documentos, PDF en R2 y gastos: `/items`, `/items/:id/file`, `/:id/gastos`.
+- `GET/POST/PUT/DELETE /api/vehicles` administra vehículos; subrutas para documentos, PDF en R2 y gastos: `/items`, `/items/:id/file`, `/:id/gastos`. `/license`, `/license/categories` y `/license/file` administran la licencia de conducción y sus categorías con vencimientos independientes.
 - `GET /api/notifications` lista notificaciones y `no_leidas`; acepta `fecha=YYYY-MM-DD` opcional para diagnostico/smoke. Subrutas: `/run`, `/:id/read`, `/read-all`, `/settings`, `/test-push`. `POST /api/notifications/run` acepta `hora`/`minuto`/`fecha` opcionales para smoke y devuelve `push_enviadas`, `push_retenidas`, `en_silencio` y `pausado`.
 - `GET/POST/PUT/DELETE /api/family` administra familiares; `POST/GET/DELETE /api/family/:id/file` guarda, muestra/descarga y elimina el PDF privado en R2.
 

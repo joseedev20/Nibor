@@ -709,7 +709,61 @@ async function run() {
     placa: 'SMK123',
     color: '#2563eb',
   })
-  if (!vehicle.id || vehicle.items.length < 2) throw new Error('Vehiculo smoke no creo items por defecto')
+  if (!vehicle.id || vehicle.items.length < 3) throw new Error('Vehiculo smoke no creo los tres documentos por defecto')
+  const propertyCard = vehicle.items.find((item) => item.nombre === 'Tarjeta de propiedad')
+  if (!propertyCard || propertyCard.estado !== 'sin_vencimiento' || Number(propertyCard.requiere_vencimiento) !== 0) {
+    throw new Error('Tarjeta de propiedad no quedo como documento permanente')
+  }
+
+  const initialLicense = await request('/vehicles/license')
+  if (!Array.isArray(initialLicense.categories)) throw new Error('Licencia no devolvio categorias')
+  const licenseCategory = await post('/vehicles/license/categories', {
+    categoria: 'C3',
+    vence: todayIso,
+    notas: 'Smoke licencia',
+  })
+  if (licenseCategory.estado !== 'por_vencer' || licenseCategory.dias_restantes !== 0 || licenseCategory.tipo_vehiculo !== 'carro') {
+    throw new Error('Categoria de licencia no calculo vencimiento/tipo en backend')
+  }
+  const invalidLicenseCategory = await expectFailure('/vehicles/license/categories', {
+    method: 'POST',
+    body: JSON.stringify({ categoria: 'Z9', vence: notificationSmokeDate }),
+  })
+  if (!String(invalidLicenseCategory.error ?? '').includes('categoría')) {
+    throw new Error('Licencia no rechazo categoria invalida')
+  }
+  const notificationLicenseCategory = await put(`/vehicles/license/categories/${licenseCategory.id}`, {
+    categoria: 'C3',
+    vence: notificationSmokeDate,
+    notas: 'Smoke licencia notificacion',
+  })
+  if (notificationLicenseCategory.vence !== notificationSmokeDate) {
+    throw new Error('Categoria de licencia no actualizo su vencimiento independiente')
+  }
+
+  const licensePdfBytes = new Uint8Array([37, 80, 68, 70, 45, 49, 46, 52, 10, 76, 73, 67, 69, 78, 67, 73, 65])
+  const licenseUploadResponse = await fetch(`${baseUrl}/vehicles/license/file`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/pdf',
+      'x-file-name': encodeURIComponent('smoke-licencia.pdf'),
+    },
+    body: licensePdfBytes,
+  })
+  const licenseUploadJson = await licenseUploadResponse.json()
+  if (!licenseUploadResponse.ok || licenseUploadJson.data.file_name !== 'smoke-licencia.pdf') {
+    throw new Error(`Upload PDF licencia fallo: ${JSON.stringify(licenseUploadJson)}`)
+  }
+  const licenseDownloadResponse = await fetch(`${baseUrl}/vehicles/license/file`)
+  const licenseDownloaded = await licenseDownloadResponse.arrayBuffer()
+  if (
+    !licenseDownloadResponse.ok
+    || licenseDownloaded.byteLength !== licensePdfBytes.byteLength
+    || !String(licenseDownloadResponse.headers.get('content-disposition')).startsWith('inline')
+  ) {
+    throw new Error('Vista PDF licencia no hizo roundtrip binario inline')
+  }
+  await del('/vehicles/license/file')
 
   const vehicleItem = vehicle.items.find((item) => item.nombre.includes('SOAT')) ?? vehicle.items[0]
   const editedItem = await put(`/vehicles/items/${vehicleItem.id}`, {
@@ -884,6 +938,9 @@ async function run() {
     }
     if (!notificationList.notificaciones.some((item) => item.tipo === 'vehiculo' && String(item.titulo).includes('Smoke'))) {
       throw new Error('Notificaciones no incluyeron vencimiento vehicular smoke')
+    }
+    if (!notificationList.notificaciones.some((item) => item.tipo === 'vehiculo' && String(item.titulo).includes('Licencia categoría C3'))) {
+      throw new Error('Notificaciones no incluyeron vencimiento de licencia smoke')
     }
     if (!notificationList.notificaciones.some((item) => item.tipo === 'habitos' && String(item.mensaje ?? '').includes(smokeHabit.name))) {
       throw new Error('Notificaciones no incluyeron habito smoke en revision manual dentro del intervalo')

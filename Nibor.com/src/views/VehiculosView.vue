@@ -8,11 +8,13 @@ const now = new Date()
 const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
 const vehicles = ref([])
+const driverLicense = ref({ categories: [] })
 const activeId = ref(null)
 const gastos = ref([])
 const loading = ref(false)
 const saving = ref(false)
 const uploadingItemId = ref(null)
+const uploadingLicense = ref(false)
 const error = ref('')
 const notice = ref('')
 const isDark = useIsDark()
@@ -23,6 +25,8 @@ const itemEditorOpen = ref(false)
 const itemForm = ref(emptyItemForm())
 const gastoEditorOpen = ref(false)
 const gastoForm = ref(emptyGastoForm())
+const licenseCategoryEditorOpen = ref(false)
+const licenseCategoryForm = ref(emptyLicenseCategoryForm())
 const editorError = ref('')
 
 const activeVehicle = computed(() => vehicles.value.find((v) => v.id === activeId.value) ?? null)
@@ -35,6 +39,18 @@ const ESTADOS = {
   por_vencer: { label: 'Por vencer', class: 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-400', ring: 'border-amber-300 dark:border-amber-800' },
   vencida: { label: 'Vencida', class: 'bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-400', ring: 'border-rose-300 dark:border-rose-800' },
   por_configurar: { label: 'Por configurar', class: 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400', ring: 'border-zinc-200 dark:border-zinc-800' },
+  sin_vencimiento: { label: 'Permanente', class: 'bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-400', ring: 'border-sky-200 dark:border-sky-900' },
+}
+
+const LICENSE_CATEGORY_DETAILS = {
+  A1: 'Motocicletas hasta 125 c. c.',
+  A2: 'Motocicletas de más de 125 c. c.',
+  B1: 'Automóviles, camperos, camionetas y microbuses particulares',
+  B2: 'Camiones rígidos, buses y busetas particulares',
+  B3: 'Vehículos articulados particulares',
+  C1: 'Automóviles, camperos, camionetas y microbuses de servicio público',
+  C2: 'Camiones rígidos, buses y busetas de servicio público',
+  C3: 'Vehículos articulados de servicio público',
 }
 
 const EXPIRY_CYCLE_DAYS = 365
@@ -50,11 +66,15 @@ function emptyVehicleForm() {
 }
 
 function emptyItemForm() {
-  return { id: null, nombre: '', vence: '', notas: '' }
+  return { id: null, nombre: '', vence: '', notas: '', requiere_vencimiento: true }
 }
 
 function emptyGastoForm() {
   return { concepto: '', monto: '', fecha: todayIso }
+}
+
+function emptyLicenseCategoryForm() {
+  return { id: null, categoria: 'A2', vence: '', notas: '' }
 }
 
 async function fetchJson(path, options) {
@@ -77,6 +97,14 @@ async function loadVehicles({ keepActive = true } = {}) {
     error.value = err.message
   } finally {
     loading.value = false
+  }
+}
+
+async function loadDriverLicense() {
+  try {
+    driverLicense.value = await fetchJson('/api/vehicles/license')
+  } catch (err) {
+    error.value = err.message
   }
 }
 
@@ -172,7 +200,13 @@ function openNewItem() {
 
 function openEditItem(item) {
   editorError.value = ''
-  itemForm.value = { id: item.id, nombre: item.nombre, vence: item.vence ?? '', notas: item.notas ?? '' }
+  itemForm.value = {
+    id: item.id,
+    nombre: item.nombre,
+    vence: item.vence ?? '',
+    notas: item.notas ?? '',
+    requiere_vencimiento: Number(item.requiere_vencimiento) !== 0,
+  }
   itemEditorOpen.value = true
 }
 
@@ -180,7 +214,12 @@ async function saveItem() {
   saving.value = true
   editorError.value = ''
   try {
-    const payload = { nombre: itemForm.value.nombre, vence: itemForm.value.vence || null, notas: itemForm.value.notas }
+    const payload = {
+      nombre: itemForm.value.nombre,
+      vence: itemForm.value.requiere_vencimiento ? (itemForm.value.vence || null) : null,
+      notas: itemForm.value.notas,
+      requiere_vencimiento: itemForm.value.requiere_vencimiento,
+    }
     await fetchJson(itemForm.value.id ? `/api/vehicles/items/${itemForm.value.id}` : `/api/vehicles/${activeId.value}/items`, {
       method: itemForm.value.id ? 'PUT' : 'POST',
       headers: { 'content-type': 'application/json' },
@@ -247,6 +286,100 @@ async function removeFile(item) {
   }
 }
 
+// ── Licencia de conducción ────────────────────────────────────────────────
+
+function openNewLicenseCategory() {
+  editorError.value = ''
+  licenseCategoryForm.value = emptyLicenseCategoryForm()
+  licenseCategoryEditorOpen.value = true
+}
+
+function openEditLicenseCategory(category) {
+  editorError.value = ''
+  licenseCategoryForm.value = {
+    id: category.id,
+    categoria: category.categoria,
+    vence: category.vence,
+    notas: category.notas ?? '',
+  }
+  licenseCategoryEditorOpen.value = true
+}
+
+async function saveLicenseCategory() {
+  saving.value = true
+  editorError.value = ''
+  try {
+    const form = licenseCategoryForm.value
+    await fetchJson(form.id ? `/api/vehicles/license/categories/${form.id}` : '/api/vehicles/license/categories', {
+      method: form.id ? 'PUT' : 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ categoria: form.categoria, vence: form.vence, notas: form.notas }),
+    })
+    licenseCategoryEditorOpen.value = false
+    notice.value = form.id ? 'Categoría de licencia actualizada.' : 'Categoría agregada a tu licencia.'
+    await loadDriverLicense()
+  } catch (err) {
+    editorError.value = err.message
+  } finally {
+    saving.value = false
+  }
+}
+
+async function deleteLicenseCategory() {
+  const form = licenseCategoryForm.value
+  if (!form.id || !window.confirm(`¿Eliminar la categoría ${form.categoria} de tu licencia?`)) return
+  saving.value = true
+  editorError.value = ''
+  try {
+    await fetchJson(`/api/vehicles/license/categories/${form.id}`, { method: 'DELETE' })
+    licenseCategoryEditorOpen.value = false
+    notice.value = `Categoría ${form.categoria} eliminada.`
+    await loadDriverLicense()
+  } catch (err) {
+    editorError.value = err.message
+  } finally {
+    saving.value = false
+  }
+}
+
+async function uploadLicenseFile(fileEvent) {
+  const file = fileEvent.target.files?.[0]
+  fileEvent.target.value = ''
+  if (!file) return
+  if (file.type !== 'application/pdf') {
+    error.value = 'Solo se aceptan archivos PDF'
+    return
+  }
+  uploadingLicense.value = true
+  error.value = ''
+  try {
+    const response = await fetch('/api/vehicles/license/file', {
+      method: 'POST',
+      headers: { 'content-type': 'application/pdf', 'x-file-name': encodeURIComponent(file.name) },
+      body: file,
+    })
+    const json = await response.json()
+    if (!response.ok) throw new Error(json.error ?? 'No se pudo subir la licencia')
+    notice.value = 'PDF de la licencia de conducción guardado.'
+    await loadDriverLicense()
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    uploadingLicense.value = false
+  }
+}
+
+async function removeLicenseFile() {
+  if (!window.confirm('¿Quitar el PDF de tu licencia de conducción?')) return
+  try {
+    await fetchJson('/api/vehicles/license/file', { method: 'DELETE' })
+    notice.value = 'PDF de la licencia eliminado.'
+    await loadDriverLicense()
+  } catch (err) {
+    error.value = err.message
+  }
+}
+
 // ── Gastos ─────────────────────────────────────────────────────────────────
 
 function openNewGasto() {
@@ -280,6 +413,7 @@ async function saveGasto() {
 }
 
 function venceLabel(item) {
+  if (item.estado === 'sin_vencimiento') return 'Documento sin fecha de vencimiento'
   if (!item.vence) return 'Configura la fecha de vencimiento'
   if (item.estado === 'vencida') return `Venció el ${formatDate(item.vence)} (hace ${Math.abs(item.dias_restantes)} días)`
   if (item.estado === 'por_vencer') return `Vence el ${formatDate(item.vence)} — en ${item.dias_restantes} días`
@@ -304,6 +438,7 @@ function gaugeColor(item) {
 }
 
 function remainingDays(item) {
+  if (item.dias_restantes === null || item.dias_restantes === undefined || item.dias_restantes === '') return null
   const days = Number(item.dias_restantes)
   return Number.isFinite(days) ? days : null
 }
@@ -345,7 +480,7 @@ function gaugeRingStyle(item) {
   }
 }
 
-onMounted(loadVehicles)
+onMounted(() => Promise.all([loadVehicles(), loadDriverLicense()]))
 </script>
 
 <template>
@@ -357,7 +492,7 @@ onMounted(loadVehicles)
           <h1 class="text-2xl font-bold">Tu carro y tu moto al día</h1>
           <NotificationModuleSettings module="vehiculos" />
         </div>
-        <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">SOAT, tecnomecánica, documentos en PDF y gastos conectados a tus finanzas.</p>
+        <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">SOAT, tecnomecánica, tarjeta de propiedad, licencia de conducción y gastos conectados a tus finanzas.</p>
       </div>
 
       <button type="button" class="h-10 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-500" @click="openNewVehicle">
@@ -368,10 +503,75 @@ onMounted(loadVehicles)
     <div v-if="error" class="mt-6 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300">{{ error }}</div>
     <div v-if="notice" class="mt-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300">{{ notice }}</div>
 
+    <!-- Licencia personal: un PDF, varias categorías con fechas independientes -->
+    <section class="mt-6 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900 sm:p-5">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Documento personal</p>
+          <h2 class="mt-1 text-lg font-bold text-zinc-900 dark:text-zinc-100">Licencia de conducción</h2>
+          <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Guarda un solo PDF y registra cada categoría con su propia fecha de vencimiento.</p>
+        </div>
+        <button type="button" class="h-9 shrink-0 rounded-lg bg-emerald-600 px-3 text-sm font-semibold text-white transition hover:bg-emerald-500" @click="openNewLicenseCategory">
+          + Categoría
+        </button>
+      </div>
+
+      <div class="mt-4 flex flex-wrap items-center gap-2 text-sm">
+        <template v-if="driverLicense.file_name">
+          <a
+            href="/api/vehicles/license/file"
+            target="_blank"
+            rel="noopener"
+            class="flex h-9 items-center gap-2 rounded-lg bg-emerald-50 px-3 font-medium text-emerald-700 transition hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-400 dark:hover:bg-emerald-900"
+          >
+            📄 <span class="max-w-52 truncate">{{ driverLicense.file_name }}</span> · Ver PDF
+          </a>
+          <label class="flex h-9 cursor-pointer items-center rounded-lg border border-zinc-200 px-3 font-medium text-zinc-600 transition hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">
+            {{ uploadingLicense ? 'Subiendo…' : 'Reemplazar PDF' }}
+            <input type="file" accept="application/pdf" class="hidden" :disabled="uploadingLicense" @change="uploadLicenseFile">
+          </label>
+          <button type="button" class="h-9 rounded-lg px-3 text-zinc-500 transition hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950" @click="removeLicenseFile">Quitar PDF</button>
+        </template>
+        <label v-else class="flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-dashed border-zinc-300 px-3 font-medium text-zinc-600 transition hover:border-emerald-400 hover:text-emerald-700 dark:border-zinc-700 dark:text-zinc-300 dark:hover:text-emerald-400">
+          {{ uploadingLicense ? 'Subiendo…' : '📎 Adjuntar PDF de la licencia' }}
+          <input type="file" accept="application/pdf" class="hidden" :disabled="uploadingLicense" @change="uploadLicenseFile">
+        </label>
+      </div>
+
+      <div v-if="!driverLicense.categories?.length" class="mt-4 rounded-lg border border-dashed border-zinc-300 px-4 py-6 text-center text-sm text-zinc-400 dark:border-zinc-700">
+        Agrega las categorías que aparecen en tu licencia, por ejemplo A2 para moto y B1 para carro.
+      </div>
+      <div v-else class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <button
+          v-for="category in driverLicense.categories"
+          :key="category.id"
+          type="button"
+          class="rounded-lg border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-sm"
+          :class="ESTADOS[category.estado]?.ring"
+          @click="openEditLicenseCategory(category)"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div class="flex min-w-0 items-center gap-3">
+              <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-base font-extrabold text-white dark:bg-zinc-100 dark:text-zinc-950">{{ category.categoria }}</span>
+              <div class="min-w-0">
+                <p class="font-semibold text-zinc-900 dark:text-zinc-100">{{ category.tipo_vehiculo === 'moto' ? '🏍️ Moto' : '🚗 Carro' }}</p>
+                <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{{ LICENSE_CATEGORY_DETAILS[category.categoria] }}</p>
+              </div>
+            </div>
+            <span class="shrink-0 rounded-full px-2 py-1 text-xs font-semibold" :class="ESTADOS[category.estado]?.class">{{ ESTADOS[category.estado]?.label }}</span>
+          </div>
+          <div class="mt-3 flex items-center justify-between gap-3 border-t border-zinc-100 pt-3 text-xs dark:border-zinc-800">
+            <span class="text-zinc-500 dark:text-zinc-400">Vence el {{ formatDate(category.vence) }}</span>
+            <strong class="text-zinc-800 dark:text-zinc-200">{{ gaugeHeadline(category) }}</strong>
+          </div>
+        </button>
+      </div>
+    </section>
+
     <div v-if="loading" class="mt-6 rounded-lg border border-zinc-200 bg-white p-8 text-center text-sm text-zinc-400 dark:border-zinc-800 dark:bg-zinc-900">Cargando…</div>
 
     <div v-else-if="!vehicles.length" class="mt-6 rounded-2xl border border-dashed border-zinc-300 p-10 text-center text-sm text-zinc-400 dark:border-zinc-700 dark:text-zinc-500">
-      Registra tu primer vehículo — se crea con SOAT y Técnico mecánica listos para ponerles fecha y PDF.
+      Registra tu primer vehículo — se crea con SOAT, Técnico mecánica y Tarjeta de propiedad listos para configurar.
     </div>
 
     <template v-else>
@@ -538,11 +738,18 @@ onMounted(loadVehicles)
               <span class="font-medium text-zinc-700 dark:text-zinc-300">Nombre</span>
               <input v-model="itemForm.nombre" type="text" placeholder="p. ej. SOAT, Licencia, Llantas" class="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
             </label>
-            <label class="grid gap-1 text-sm">
+            <label v-if="itemForm.requiere_vencimiento" class="grid gap-1 text-sm">
               <span class="font-medium text-zinc-700 dark:text-zinc-300">Vence <span class="font-normal text-zinc-400">(opcional)</span></span>
               <input v-model="itemForm.vence" type="date" class="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
             </label>
+            <div v-else class="flex items-end">
+              <p class="flex h-10 w-full items-center rounded-lg bg-sky-50 px-3 text-sm text-sky-700 dark:bg-sky-950 dark:text-sky-300">Documento sin vencimiento</p>
+            </div>
           </div>
+          <label class="flex items-center gap-3 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            <input v-model="itemForm.requiere_vencimiento" type="checkbox" class="h-4 w-4 accent-emerald-600">
+            Este documento tiene fecha de vencimiento
+          </label>
           <label class="grid gap-1 text-sm">
             <span class="font-medium text-zinc-700 dark:text-zinc-300">Notas <span class="font-normal text-zinc-400">(opcional)</span></span>
             <textarea v-model="itemForm.notas" rows="2" class="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100" />
@@ -553,6 +760,59 @@ onMounted(loadVehicles)
             <span v-else />
             <div class="flex gap-2">
               <button type="button" class="h-10 rounded-lg border border-zinc-200 px-4 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800" @click="itemEditorOpen = false">Cancelar</button>
+              <button type="submit" class="h-10 rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-60" :disabled="saving">{{ saving ? 'Guardando…' : 'Guardar' }}</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal categoría de licencia -->
+    <div v-if="licenseCategoryEditorOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 px-4 backdrop-blur-sm" @click.self="licenseCategoryEditorOpen = false">
+      <div class="w-full max-w-lg rounded-lg border border-zinc-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
+        <div class="border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
+          <h2 class="text-base font-semibold">{{ licenseCategoryForm.id ? 'Editar categoría de licencia' : 'Agregar categoría a la licencia' }}</h2>
+          <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Cada categoría puede tener una fecha diferente aunque aparezca en la misma licencia física.</p>
+        </div>
+        <form class="grid gap-4 p-5" @submit.prevent="saveLicenseCategory">
+          <div class="grid gap-4 sm:grid-cols-2">
+            <label class="grid gap-1 text-sm">
+              <span class="font-medium text-zinc-700 dark:text-zinc-300">Categoría</span>
+              <select v-model="licenseCategoryForm.categoria" class="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
+                <optgroup label="Moto">
+                  <option value="A1">A1 · Moto hasta 125 c. c.</option>
+                  <option value="A2">A2 · Moto de más de 125 c. c.</option>
+                </optgroup>
+                <optgroup label="Carro particular">
+                  <option value="B1">B1 · Carro particular</option>
+                  <option value="B2">B2 · Camión/bus particular</option>
+                  <option value="B3">B3 · Articulado particular</option>
+                </optgroup>
+                <optgroup label="Servicio público">
+                  <option value="C1">C1 · Carro público</option>
+                  <option value="C2">C2 · Camión/bus público</option>
+                  <option value="C3">C3 · Articulado público</option>
+                </optgroup>
+              </select>
+            </label>
+            <label class="grid gap-1 text-sm">
+              <span class="font-medium text-zinc-700 dark:text-zinc-300">Fecha de vencimiento</span>
+              <input v-model="licenseCategoryForm.vence" type="date" required class="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
+            </label>
+          </div>
+          <div class="rounded-lg bg-zinc-50 px-3 py-2 text-xs text-zinc-600 dark:bg-zinc-950 dark:text-zinc-400">
+            {{ LICENSE_CATEGORY_DETAILS[licenseCategoryForm.categoria] }}
+          </div>
+          <label class="grid gap-1 text-sm">
+            <span class="font-medium text-zinc-700 dark:text-zinc-300">Notas <span class="font-normal text-zinc-400">(opcional)</span></span>
+            <textarea v-model="licenseCategoryForm.notas" rows="2" class="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100" />
+          </label>
+          <div v-if="editorError" class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300">{{ editorError }}</div>
+          <div class="flex justify-between gap-2 pt-2">
+            <button v-if="licenseCategoryForm.id" type="button" class="h-10 rounded-lg border border-rose-200 px-4 text-sm font-medium text-rose-700 transition hover:bg-rose-50 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950" @click="deleteLicenseCategory">Eliminar</button>
+            <span v-else />
+            <div class="flex gap-2">
+              <button type="button" class="h-10 rounded-lg border border-zinc-200 px-4 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800" @click="licenseCategoryEditorOpen = false">Cancelar</button>
               <button type="submit" class="h-10 rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-60" :disabled="saving">{{ saving ? 'Guardando…' : 'Guardar' }}</button>
             </div>
           </div>

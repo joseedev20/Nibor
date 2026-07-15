@@ -240,10 +240,17 @@ async function checkVehiculos(db, settings, hoy, umbrales) {
   const recordarCada = Math.max(1, Number(settings.vencida_recordar_cada ?? 3))
   const items = await all(
     db,
-    `SELECT i.id, i.nombre, i.vence, v.nombre AS vehiculo
+    `SELECT 'vehicle' AS source, i.id, i.nombre, i.vence, v.nombre AS vehiculo
      FROM vehicle_items i
      JOIN vehicles v ON v.id = i.vehicle_id
-     WHERE v.activa = 1 AND i.vence IS NOT NULL`,
+     WHERE v.activa = 1 AND i.vence IS NOT NULL
+     UNION ALL
+     SELECT 'license' AS source, c.id,
+            'Licencia categoría ' || c.categoria AS nombre,
+            c.vence,
+            CASE WHEN c.categoria LIKE 'A%' THEN 'Moto' ELSE 'Carro' END AS vehiculo
+     FROM driver_license_categories c
+     WHERE c.vence IS NOT NULL`,
   )
   let nuevas = 0
   for (const item of items) {
@@ -264,7 +271,7 @@ async function checkVehiculos(db, settings, hoy, umbrales) {
       titulo,
       mensaje: `Vencimiento: ${item.vence}`,
       fecha: hoy,
-      dedupe: `veh:${item.id}:${item.vence}:${dias}`,
+      dedupe: `veh:${item.source}:${item.id}:${item.vence}:${dias}`,
     })) nuevas++
   }
   return nuevas

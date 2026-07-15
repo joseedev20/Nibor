@@ -47,7 +47,7 @@ Nibor.com/
 - **Los campos calculados (ganancia, rentabilidad, saldo_total_inicial) se calculan SOLO en el backend** y se devuelven en las respuestas. El frontend nunca los recalcula.
 - En Salud, el IMC y su categoría se calculan SOLO en el backend y se devuelven en `/api/salud`; el frontend solo los presenta.
 - En Hábitos, progreso, rachas, heatmap, conteos del día e integraciones se calculan SOLO en el backend y se devuelven en `/api/habits`; el frontend solo los presenta.
-- En Vehículos, estado de documentos y días restantes se calculan SOLO en el backend; PDFs se guardan en R2 (`FILES`) y la UI nunca guarda archivos en D1.
+- En Vehículos, estado de documentos y días restantes se calculan SOLO en el backend; PDFs se guardan en R2 (`FILES`) y la UI nunca guarda archivos en D1. La Tarjeta de propiedad usa `requiere_vencimiento = 0`; la licencia personal vive en `driver_licenses` y sus categorías/vencimientos en `driver_license_categories`, expuestas bajo `/api/vehicles/license/*`.
 - En Notificaciones, las reglas, deduplicación, prioridad/sonido por regla, franjas múltiples de hábitos por días, avisos programados de vehículos, silencio, pausa y envío Pushover se ejecutan SOLO en backend/cron; el frontend solo invoca `/run`, muestra la bandeja y administra settings por módulo. `fecha` en `/api/notifications` y `/api/notifications/run` queda reservado para smoke/diagnostico, no para UI normal.
 - Producción debe estar protegida por Cloudflare Access para el dominio completo y `/api/*`; nunca agregar un bypass sin una autenticación alternativa revisada.
 - Hábitos es de usuario único (`Nibor`): no reintroducir login, sesiones, tabla `users` ni credenciales desde la app PHP vieja.
