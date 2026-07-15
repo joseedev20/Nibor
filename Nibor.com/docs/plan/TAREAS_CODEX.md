@@ -104,7 +104,7 @@ Notas técnicas para Fase 1:
 - [x] 2026-07-12 21:17 Recuperación producción: una ejecución de Codex desplegó desde la copia obsoleta no-Git `Escritorio\Nibor.com` y reemplazó Familiar. Se restauró producción desde el repo Git (versión `0391e98f`) y la copia local se aisló como Worker `nibor-finanzas-local` para que no pueda volver a sobrescribir `niborapp.com`.
 - [x] 2026-07-13 Vehículos: restaurar en el repositorio Git principal los anillos de días restantes de SOAT y técnico-mecánica; implementación CSS responsive, sin cambios de esquema ni API.
 - [x] 2026-07-13 Eventos móvil real: feed ICS protegido con token secreto rotatorio, URL entregada desde la sesión autenticada, aplicación Access `Calendario móvil Nibor` con bypass limitado a `/api/events/calendar.ics`, despliegue y responsive móvil verificados.
-- [ ] 2026-07-15 Eventos: mover la configuración de suscripción móvil a un modal abierto desde un botón junto a la campana, dejando visible por defecto solo la lista de eventos.
+- [x] 2026-07-15 Eventos: mover la configuración de suscripción móvil a un modal abierto desde un botón junto a la campana, dejando visible por defecto solo la lista de eventos. Verificado con pruebas, build y navegador en escritorio/móvil (sin overflow ni errores de consola); desplegado como `b4fa02c2-4dd5-452a-874c-0b44513d7a0d`.
 
 - 2026-07-04: Codex recomienda y adopta Cloudflare D1 para este proyecto. La API se implementará como Cloudflare Worker/Hono sobre binding `env.DB`; no Express/better-sqlite3 en el runtime objetivo.
 - 2026-07-04 11:50: Se agregó endpoint `/api/categories` aunque el CRUD UI aparece en Fase 4, porque el store y movimientos/suscripciones necesitan el catálogo desde Fase 1.
