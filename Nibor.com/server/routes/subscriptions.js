@@ -206,7 +206,18 @@ subscriptions.get('/history', async (c) => {
     }
   })
 
-  return ok(c, { anio, subs: data })
+  const resumen = data.reduce(
+    (totals, sub) => {
+      const amount = Number(sub.total_anio ?? 0)
+      if (sub.tipo === 'ingreso') totals.total_ingresos += amount
+      else totals.total_gastos += amount
+      totals.balance = totals.total_ingresos - totals.total_gastos
+      return totals
+    },
+    { total_ingresos: 0, total_gastos: 0, balance: 0 },
+  )
+
+  return ok(c, { anio, subs: data, resumen })
 })
 
 // Recordatorios: fijos manuales (automatica = 0) activos sin movimiento en el mes.

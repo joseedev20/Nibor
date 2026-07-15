@@ -50,6 +50,21 @@ const historyFilterOptions = [
   { value: 'gastos', label: 'Gastos' },
 ]
 
+const historySummaryRows = computed(() => {
+  const summary = history.value?.resumen ?? { total_ingresos: 0, total_gastos: 0, balance: 0 }
+  if (historyFilter.value === 'ingresos') {
+    return [{ key: 'ingresos', label: `Total ingresos ${historyYear.value}`, value: summary.total_ingresos, tone: 'income' }]
+  }
+  if (historyFilter.value === 'gastos') {
+    return [{ key: 'gastos', label: `Total gastos ${historyYear.value}`, value: summary.total_gastos, tone: 'expense' }]
+  }
+  return [
+    { key: 'ingresos', label: `Total ingresos ${historyYear.value}`, value: summary.total_ingresos, tone: 'income' },
+    { key: 'gastos', label: `Total gastos ${historyYear.value}`, value: summary.total_gastos, tone: 'expense' },
+    { key: 'balance', label: `Balance ${historyYear.value}`, value: summary.balance, tone: summary.balance >= 0 ? 'income' : 'negative' },
+  ]
+})
+
 const incomePresets = [
   {
     id: 'salary',
@@ -520,6 +535,21 @@ onMounted(loadData)
                 <td class="whitespace-nowrap px-4 py-2 text-right font-semibold tabular-nums" :class="sub.tipo === 'ingreso' ? 'text-emerald-700 dark:text-emerald-400' : ''">{{ sub.total_anio ? formatCOP(sub.total_anio) : '—' }}</td>
               </tr>
             </tbody>
+            <tfoot class="border-t-2 border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-950">
+              <tr v-for="row in historySummaryRows" :key="row.key">
+                <td colspan="14" class="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">{{ row.label }}</td>
+                <td
+                  class="whitespace-nowrap px-4 py-2 text-right text-sm font-bold tabular-nums"
+                  :class="row.tone === 'income'
+                    ? 'text-emerald-700 dark:text-emerald-400'
+                    : row.tone === 'negative'
+                      ? 'text-rose-700 dark:text-rose-400'
+                      : 'text-zinc-900 dark:text-zinc-100'"
+                >
+                  {{ formatCOP(row.value) }}
+                </td>
+              </tr>
+            </tfoot>
           </table>
           <div v-if="!filteredHistorySubs.length" class="border-t border-zinc-100 px-4 py-8 text-center text-sm text-zinc-400 dark:border-zinc-800">
             No hay {{ historyFilter === 'ingresos' ? 'ingresos fijos' : historyFilter === 'gastos' ? 'gastos fijos' : 'fijos' }} en {{ historyYear }}.

@@ -197,7 +197,7 @@ family_members   (id, nombre, parentesco, tipo_documento, numero_documento, nota
 - `GET /api/goals` devuelve metas enriquecidas con `monto_asignado`, `porcentaje_asignado`, `monto_actual`, `monto_faltante`, `progreso`, `monto_sin_asignar` y detalle por plataforma.
 - `GET /api/exchange-rates/usd-cop` consulta la TRM vigente para estimar suscripciones en USD; si falla al aplicar recurrentes, se usa la tasa guardada en la suscripción.
 - `GET /api/subscriptions/reminders?anio=&mes=` devuelve pagos manuales activos sin movimiento aplicado en el mes.
-- `GET /api/subscriptions/history?anio=` devuelve histórico anual de fijos construido desde `movements.subscription_id`.
+- `GET /api/subscriptions/history?anio=` devuelve histórico anual de fijos construido desde `movements.subscription_id` y un `resumen` backend con total de ingresos, gastos y balance del año.
 - `GET/POST/PUT/DELETE /api/cards` administra tarjetas por nombre/color y bloquea nombres con números largos.
 - `GET/POST/PUT/DELETE /api/music/songs` administra el catálogo de canciones de Nibor Música y devuelve conteos por estado.
 - `GET/POST/PUT/DELETE /api/knowledge/items` administra recursos de aprendizaje y devuelve conteos por estado, tipo, idioma y año; `GET` acepta filtros `idioma=espanol|ingles` y `anio=YYYY`.

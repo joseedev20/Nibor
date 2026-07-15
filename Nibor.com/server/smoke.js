@@ -281,6 +281,13 @@ async function run() {
   }
   if (summary.movimientos.total_ingresos < 1500) throw new Error('Resumen no incluyo ingresos recurrentes smoke')
   if (summary.movimientos.tasa_ahorro === null) throw new Error('Resumen no calculo tasa de ahorro con ingresos recurrentes')
+  const subscriptionHistory = await request(`/subscriptions/history?anio=${smokeYear}`)
+  if (subscriptionHistory.resumen.total_ingresos < 500 || subscriptionHistory.resumen.total_gastos < 99) {
+    throw new Error('Historico de fijos no devolvio totales de ingresos/gastos')
+  }
+  if (subscriptionHistory.resumen.balance !== subscriptionHistory.resumen.total_ingresos - subscriptionHistory.resumen.total_gastos) {
+    throw new Error('Balance del historico de fijos no fue calculado por backend')
+  }
 
   const closed = await post('/close-month', {
     anio: smokeYear,

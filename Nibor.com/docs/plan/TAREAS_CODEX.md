@@ -107,6 +107,7 @@ Notas técnicas para Fase 1:
 - [x] 2026-07-15 Eventos: mover la configuración de suscripción móvil a un modal abierto desde un botón junto a la campana, dejando visible por defecto solo la lista de eventos. Verificado con pruebas, build y navegador en escritorio/móvil (sin overflow ni errores de consola); desplegado como `b4fa02c2-4dd5-452a-874c-0b44513d7a0d`.
 - [x] 2026-07-15 Vehículos: agregar Tarjeta de propiedad a vehículos existentes/nuevos y una sección de Licencia de conducción con PDF único, categorías dinámicas y vencimiento independiente por categoría; D1/API/UI/notificaciones/smoke publicados como `3ec35f45-3428-4dec-ab63-2885a67cd8db`. Verificado en escritorio y móvil sin overflow ni errores de consola.
 - [x] 2026-07-15 Suscripciones: agregar filtro Todos/Ingresos/Gastos al Histórico de fijos, manteniendo el año y sin cambios de API o D1. Publicado como `be1ca2be-5b0a-4ba5-8f95-496b5ed0267a`; verificado con datos reales en escritorio/móvil, sin overflow ni errores de consola.
+- [ ] 2026-07-15 Suscripciones: agregar al pie del Histórico de fijos el resumen anual del filtro; el backend devuelve ingresos, gastos y balance para no calcular cifras financieras en Vue.
 
 - 2026-07-04: Codex recomienda y adopta Cloudflare D1 para este proyecto. La API se implementará como Cloudflare Worker/Hono sobre binding `env.DB`; no Express/better-sqlite3 en el runtime objetivo.
 - 2026-07-04 11:50: Se agregó endpoint `/api/categories` aunque el CRUD UI aparece en Fase 4, porque el store y movimientos/suscripciones necesitan el catálogo desde Fase 1.
