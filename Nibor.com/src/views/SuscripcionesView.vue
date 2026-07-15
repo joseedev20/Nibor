@@ -13,6 +13,7 @@ const historyOpen = ref(false)
 const historyLoading = ref(false)
 const historyYear = ref(now.getFullYear())
 const history = ref(null)
+const historyFilter = ref('todos')
 const loading = ref(false)
 const saving = ref(false)
 const applying = ref(false)
@@ -36,6 +37,18 @@ const activeGastosCount = computed(() => activeSubs.value.filter((s) => s.tipo !
 const fixedBalance = computed(() => activeIngresos.value - activeGastos.value)
 const fixedBalanceStatus = computed(() => fixedBalance.value >= 0 ? 'Disponible después de fijos' : 'Faltante para cubrir fijos')
 const incomeSubscriptions = computed(() => subscriptions.value.filter((subscription) => subscription.tipo === 'ingreso'))
+const filteredHistorySubs = computed(() => {
+  const rows = history.value?.subs ?? []
+  if (historyFilter.value === 'ingresos') return rows.filter((subscription) => subscription.tipo === 'ingreso')
+  if (historyFilter.value === 'gastos') return rows.filter((subscription) => subscription.tipo !== 'ingreso')
+  return rows
+})
+
+const historyFilterOptions = [
+  { value: 'todos', label: 'Todos' },
+  { value: 'ingresos', label: 'Ingresos' },
+  { value: 'gastos', label: 'Gastos' },
+]
 
 const incomePresets = [
   {
@@ -460,10 +473,27 @@ onMounted(loadData)
       </button>
 
       <div v-if="historyOpen" class="border-t border-zinc-200 dark:border-zinc-800">
-        <div class="flex items-center gap-2 px-4 py-3">
-          <button type="button" class="h-8 w-8 rounded-lg border border-zinc-200 text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800" @click="shiftHistoryYear(-1)">‹</button>
-          <span class="min-w-16 text-center text-sm font-semibold">{{ historyYear }}</span>
-          <button type="button" class="h-8 w-8 rounded-lg border border-zinc-200 text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800" @click="shiftHistoryYear(1)">›</button>
+        <div class="flex flex-wrap items-center gap-3 px-4 py-3">
+          <div class="flex items-center gap-2">
+            <button type="button" class="h-8 w-8 rounded-lg border border-zinc-200 text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800" aria-label="Año anterior del histórico" @click="shiftHistoryYear(-1)">‹</button>
+            <span class="min-w-16 text-center text-sm font-semibold">{{ historyYear }}</span>
+            <button type="button" class="h-8 w-8 rounded-lg border border-zinc-200 text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800" aria-label="Año siguiente del histórico" @click="shiftHistoryYear(1)">›</button>
+          </div>
+          <div class="flex rounded-lg bg-zinc-100 p-1 dark:bg-zinc-800" aria-label="Filtrar histórico por tipo">
+            <button
+              v-for="option in historyFilterOptions"
+              :key="option.value"
+              type="button"
+              class="h-7 rounded-md px-3 text-xs font-semibold transition"
+              :class="historyFilter === option.value
+                ? 'bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-white'
+                : 'text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white'"
+              :aria-pressed="historyFilter === option.value"
+              @click="historyFilter = option.value"
+            >
+              {{ option.label }}
+            </button>
+          </div>
         </div>
 
         <div v-if="historyLoading" class="p-8 text-center text-sm text-zinc-400">Cargando…</div>
@@ -478,7 +508,7 @@ onMounted(loadData)
               </tr>
             </thead>
             <tbody class="divide-y divide-zinc-100 dark:divide-zinc-800">
-              <tr v-for="sub in history.subs" :key="sub.id" :class="Number(sub.activa) === 1 ? '' : 'opacity-50'">
+              <tr v-for="sub in filteredHistorySubs" :key="sub.id" :class="Number(sub.activa) === 1 ? '' : 'opacity-50'">
                 <td class="max-w-40 truncate px-4 py-2 font-medium">{{ sub.categoria_icono ?? '' }} {{ sub.nombre }}</td>
                 <td class="whitespace-nowrap px-2 py-2 text-xs text-zinc-500 dark:text-zinc-400">{{ desdeLabel(sub.desde) }}</td>
                 <td v-for="(celda, i) in sub.meses" :key="i" class="px-1 py-2 text-center">
@@ -491,6 +521,9 @@ onMounted(loadData)
               </tr>
             </tbody>
           </table>
+          <div v-if="!filteredHistorySubs.length" class="border-t border-zinc-100 px-4 py-8 text-center text-sm text-zinc-400 dark:border-zinc-800">
+            No hay {{ historyFilter === 'ingresos' ? 'ingresos fijos' : historyFilter === 'gastos' ? 'gastos fijos' : 'fijos' }} en {{ historyYear }}.
+          </div>
           <div class="flex flex-wrap items-center gap-4 px-4 py-3 text-xs text-zinc-500 dark:text-zinc-400">
             <span class="flex items-center gap-1.5"><span class="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500" /> pago normal</span>
             <span class="flex items-center gap-1.5">⚠️ monto inusual o varios pagos (mora, ajustes)</span>
