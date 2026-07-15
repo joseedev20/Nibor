@@ -38,7 +38,7 @@ Actualizado: 2026-07-12 15:10 -05:00
 | 10 — Nibor Salud | Codex | Completada | MVP de salud con medidas, IMC backend, condiciones, medicamentos, citas, visión, vista `/salud`, API `/api/salud` y smoke |
 | 11 — Nibor Hábitos | Codex | Completada | MVP de hábitos con migración `0015_habits.sql`, API `/api/habits`, importador old idempotente, vista `/habitos`, integraciones Salud/Conocimiento y smoke |
 | 12 — Eventos | Claude | Completada | Calendario personal con migración `0016_events.sql`, API `/api/events`, feed `/api/events/calendar.ics`, vista `/eventos` y smoke Codex |
-| 13 — Vehículos | Claude + Codex | En ampliación | Codex agrega Tarjeta de propiedad y licencia de conducción con PDF único y vencimiento independiente por categoría |
+| 13 — Vehículos | Claude + Codex | Completada | Tarjeta de propiedad permanente y licencia de conducción con PDF único, categorías y vencimientos independientes publicadas |
 | 14 — Notificaciones | Claude + Codex | Completada | Backend/cron/Pushover v2 por Claude; configuración contextual por módulo, campana, `/notificaciones`, smoke y docs por Codex |
 | 15 — Familiar | Codex | Completada | Directorio privado, identificación visible, visor/descarga PDF en R2, responsive y smoke |
 
@@ -105,4 +105,4 @@ Actualizado: 2026-07-12 15:10 -05:00
 - `notifications` usa `dedupe_key` para no duplicar reglas del cron. Pushover requiere `pushover_user` y `pushover_token` guardados en settings; sin llaves, solo funciona la bandeja in-app. La tabla guarda prioridad y sonido por notificación; `notification_settings` guarda la entrega por regla, silencio, pausa, resumen diario, franjas múltiples de hábitos, programación de vehículos y repetición de vencidas.
 - `family_members` guarda información identificatoria sensible; sus PDFs viven en R2 privado (`FILES`). Nunca incluir familiares, números de documento ni PDFs reales en migraciones, seeds, fixtures, logs o smoke.
 - Vehículos muestra anillos CSS de días restantes para SOAT y técnico-mecánica, adaptados a modo claro/oscuro y móvil. Es una mejora solo de UI: no cambia D1 ni la API.
-- 2026-07-15: ampliación de Vehículos en curso. La Tarjeta de propiedad será un documento permanente por vehículo; la licencia de conducción se modelará aparte con un único PDF privado y categorías dinámicas con vencimientos independientes.
+- 2026-07-15: ampliación de Vehículos completada. Migración `0023` aplicada en D1 remota; Tarjeta de propiedad agregada a vehículos existentes/nuevos y licencia personal publicada con PDF privado, categorías dinámicas, vencimientos backend y notificaciones.
