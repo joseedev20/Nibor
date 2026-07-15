@@ -15,8 +15,10 @@ const editorOpen = ref(false)
 const editorError = ref('')
 const showPast = ref(false)
 const form = ref(emptyForm())
+const calendarSettingsOpen = ref(false)
 const calendarFeed = ref(null)
 const feedError = ref('')
+const feedLoading = ref(false)
 
 const icsUrl = computed(() => calendarFeed.value?.https_url ?? '')
 const webcalUrl = computed(() => calendarFeed.value?.webcal_url ?? '')
@@ -73,13 +75,21 @@ async function loadEvents() {
 }
 
 async function loadCalendarFeed() {
+  feedLoading.value = true
   feedError.value = ''
   try {
     calendarFeed.value = await fetchJson('/api/events/calendar-url')
   } catch (err) {
     calendarFeed.value = null
     feedError.value = err.message
+  } finally {
+    feedLoading.value = false
   }
+}
+
+function openCalendarSettings() {
+  calendarSettingsOpen.value = true
+  if (!calendarFeed.value && !feedLoading.value) loadCalendarFeed()
 }
 
 function openNew() {
@@ -177,10 +187,7 @@ function horaLabel(event) {
   return `${event.hora} – ${end}`
 }
 
-onMounted(() => {
-  loadEvents()
-  loadCalendarFeed()
-})
+onMounted(loadEvents)
 </script>
 
 <template>
@@ -191,6 +198,18 @@ onMounted(() => {
         <div class="mt-1 flex items-center gap-2">
           <h1 class="text-2xl font-bold">Eventos</h1>
           <NotificationModuleSettings module="eventos" />
+          <button
+            type="button"
+            class="flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-500 transition hover:border-emerald-300 hover:text-emerald-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:border-emerald-800 dark:hover:text-emerald-400"
+            title="Configurar calendario en el celular"
+            aria-label="Configurar calendario en el celular"
+            @click="openCalendarSettings"
+          >
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9.6 3.3l.5 1.8a7.5 7.5 0 013.8 0l.5-1.8 2.2 1.3-1.3 1.4a7.6 7.6 0 011.9 3.3l1.9-.4v2.6l-1.9-.4a7.6 7.6 0 01-1.9 3.3l1.3 1.4-2.2 1.3-.5-1.8a7.5 7.5 0 01-3.8 0l-.5 1.8-2.2-1.3 1.3-1.4a7.6 7.6 0 01-1.9-3.3l-1.9.4V8.9l1.9.4A7.6 7.6 0 018.7 6L7.4 4.6l2.2-1.3z" />
+              <circle cx="12" cy="10.2" r="2.6" />
+            </svg>
+          </button>
         </div>
         <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Tu calendario personal — suscríbete desde el iPhone y edítalo desde aquí.</p>
       </div>
@@ -202,35 +221,6 @@ onMounted(() => {
 
     <div v-if="error" class="mt-6 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300">{{ error }}</div>
     <div v-if="notice" class="mt-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300">{{ notice }}</div>
-
-    <!-- Suscripción ICS -->
-    <section class="mt-6 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-      <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div class="min-w-0">
-          <h2 class="text-sm font-semibold">📱 Suscríbete desde tu iPhone</h2>
-          <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-            Ajustes → Apps → Calendario → Cuentas → Añadir cuenta → Otra → Añadir suscripción de calendario, y pega la URL.
-            Los cambios que hagas aquí (fechas, horas, títulos) se actualizan solos en el teléfono.
-          </p>
-          <p v-if="webcalUrl" class="mt-2 rounded bg-zinc-100 px-2 py-1 text-xs font-medium text-emerald-700 dark:bg-zinc-800 dark:text-emerald-400">
-            🔒 URL privada lista para conectar tu calendario
-          </p>
-          <p v-else class="mt-2 rounded bg-rose-50 px-2 py-1 text-xs text-rose-700 dark:bg-rose-950 dark:text-rose-300">{{ feedError || 'Preparando URL privada…' }}</p>
-        </div>
-        <div class="flex shrink-0 flex-wrap gap-2">
-          <button type="button" class="h-9 rounded-lg border border-zinc-200 px-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800" :disabled="!webcalUrl" @click="copyIcsUrl">
-            Copiar URL
-          </button>
-          <a v-if="webcalUrl" :href="webcalUrl" class="flex h-9 items-center rounded-lg bg-emerald-600 px-3 text-sm font-medium text-white transition hover:bg-emerald-500">
-            Abrir en Calendario
-          </a>
-          <a v-if="icsUrl" :href="icsUrl" download="nibor.ics" class="flex h-9 items-center rounded-lg bg-zinc-900 px-3 text-sm font-medium text-white transition hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-white">
-            Descargar .ics
-          </a>
-        </div>
-      </div>
-      <p class="mt-2 text-xs text-zinc-500 dark:text-zinc-400">La URL contiene una llave privada. No la compartas: quien la tenga podrá ver los eventos del calendario. Puedes rotarla si alguna vez se filtra.</p>
-    </section>
 
     <!-- Próximos por mes -->
     <div v-if="loading" class="mt-6 rounded-lg border border-zinc-200 bg-white p-8 text-center text-sm text-zinc-400 dark:border-zinc-800 dark:bg-zinc-900">Cargando…</div>
@@ -282,6 +272,48 @@ onMounted(() => {
         </div>
       </div>
     </section>
+
+    <!-- Configuración de calendario móvil -->
+    <div v-if="calendarSettingsOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 px-4 backdrop-blur-sm" @click.self="calendarSettingsOpen = false">
+      <div class="w-full max-w-xl rounded-xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
+        <div class="flex items-center justify-between border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Configuración</p>
+            <h2 class="mt-0.5 text-base font-semibold text-zinc-900 dark:text-zinc-100">Calendario en el celular</h2>
+          </div>
+          <button type="button" class="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200" aria-label="Cerrar configuración del calendario" @click="calendarSettingsOpen = false">✕</button>
+        </div>
+
+        <div class="p-5">
+          <h3 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">📱 Suscríbete desde tu iPhone</h3>
+          <p class="mt-2 text-sm leading-6 text-zinc-500 dark:text-zinc-400">
+            Ajustes → Apps → Calendario → Cuentas → Añadir cuenta → Otra → Añadir suscripción de calendario, y pega la URL.
+            Los cambios que hagas aquí se actualizarán en el teléfono.
+          </p>
+
+          <p v-if="webcalUrl" class="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
+            🔒 URL privada lista para conectar tu calendario
+          </p>
+          <p v-else class="mt-4 rounded-lg px-3 py-2 text-sm" :class="feedError ? 'bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300' : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400'">
+            {{ feedError || 'Preparando URL privada…' }}
+          </p>
+
+          <div class="mt-4 flex flex-wrap gap-2">
+            <button type="button" class="h-10 rounded-lg border border-zinc-200 px-4 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800" :disabled="!webcalUrl" @click="copyIcsUrl">
+              Copiar URL
+            </button>
+            <a v-if="webcalUrl" :href="webcalUrl" class="flex h-10 items-center rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white transition hover:bg-emerald-500">
+              Abrir en Calendario
+            </a>
+            <a v-if="icsUrl" :href="icsUrl" download="nibor.ics" class="flex h-10 items-center rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white transition hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-white">
+              Descargar .ics
+            </a>
+          </div>
+
+          <p class="mt-4 text-xs leading-5 text-zinc-500 dark:text-zinc-400">La URL contiene una llave privada. No la compartas: quien la tenga podrá ver los eventos del calendario.</p>
+        </div>
+      </div>
+    </div>
 
     <!-- Modal -->
     <div v-if="editorOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 px-4 backdrop-blur-sm" @click.self="closeEditor">
