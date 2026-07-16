@@ -234,6 +234,49 @@ async function insertItems(db, periodId, items) {
   await db.batch(statements)
 }
 
+// Plantilla del mes siguiente: arrastra conceptos y saldos del último periodo.
+// Si el último mes quedó pagado, el saldo anterior sugerido es 0; si no, se
+// arrastra su nuevo saldo, igual que hace la cuenta de cobro real.
+home.get('/periods/template', async (c) => {
+  const db = c.env.DB
+  let propertyId = toInteger(c.req.query('property_id'))
+  if (!Number.isInteger(propertyId)) {
+    const defaultProperty = await first(db, 'SELECT id FROM home_properties ORDER BY activa DESC, id LIMIT 1')
+    propertyId = defaultProperty?.id ?? null
+  }
+  if (propertyId === null) return ok(c, null)
+
+  const latest = await first(
+    db,
+    'SELECT * FROM home_administration_periods WHERE property_id = ? ORDER BY anio DESC, mes DESC LIMIT 1',
+    propertyId,
+  )
+  if (!latest) return ok(c, null)
+
+  const items = await all(
+    db,
+    'SELECT concepto, saldo_anterior, cuota_mes, nuevo_saldo FROM home_administration_items WHERE period_id = ? ORDER BY orden, id',
+    latest.id,
+  )
+  const pagado = latest.fecha_pago !== null && latest.valor_pagado !== null
+  const next = latest.mes === 12 ? { anio: latest.anio + 1, mes: 1 } : { anio: latest.anio, mes: latest.mes + 1 }
+
+  return ok(c, {
+    ...next,
+    basado_en: { anio: latest.anio, mes: latest.mes, pagado },
+    items: items.map((item) => {
+      const saldoAnterior = pagado ? 0 : Number(item.nuevo_saldo ?? 0)
+      const cuotaMes = Number(item.cuota_mes ?? 0)
+      return {
+        concepto: item.concepto,
+        saldo_anterior: saldoAnterior,
+        cuota_mes: cuotaMes,
+        nuevo_saldo: Math.round((saldoAnterior + cuotaMes) * 100) / 100,
+      }
+    }),
+  })
+})
+
 home.get('/periods', async (c) => {
   const db = c.env.DB
   let propertyId = toInteger(c.req.query('property_id'))

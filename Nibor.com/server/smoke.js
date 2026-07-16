@@ -821,6 +821,18 @@ async function run() {
   const clearedPayment = await del(`/home/periods/${homePeriod.id}/payment`)
   if (clearedPayment.estado !== 'pendiente') throw new Error('Quitar pago smoke no devolvio la mensualidad a pendiente')
 
+  const homeTemplate = await request(`/home/periods/template?property_id=${homeProperty.id}`)
+  const templateItem = homeTemplate?.items?.find((entry) => entry.concepto === 'Administracion smoke')
+  if (
+    homeTemplate?.anio !== smokeYear
+    || homeTemplate?.mes !== 2
+    || !templateItem
+    || templateItem.saldo_anterior !== 90000
+    || templateItem.nuevo_saldo !== 180000
+  ) {
+    throw new Error(`Plantilla del mes siguiente no arrastro los saldos: ${JSON.stringify(homeTemplate)}`)
+  }
+
   const blockedProperty = await expectFailure(`/home/properties/${homeProperty.id}`, { method: 'DELETE' })
   if (!String(blockedProperty.error ?? '').includes('historial')) throw new Error('Propiedad con historial no bloqueo el borrado')
 

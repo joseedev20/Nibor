@@ -160,9 +160,28 @@ function resetForm(period = null) {
   editorError.value = ''
 }
 
-function openEditor(period = null) {
+async function openEditor(period = null) {
   resetForm(period)
   editorOpen.value = true
+  if (period || !property.value) return
+  // Mes nuevo: el backend sugiere el mes siguiente con los conceptos y el
+  // saldo anterior arrastrado del último periodo (0 si ya quedó pagado).
+  try {
+    const template = await fetchJson(`/api/home/periods/template?property_id=${property.value.id}`)
+    if (template && editorOpen.value && !form.id) {
+      form.anio = template.anio
+      form.mes = template.mes
+      form.items = template.items.map((item) => ({ ...item }))
+    }
+  } catch {
+    // sin plantilla se conservan los valores por defecto
+  }
+}
+
+function syncNuevoSaldo(item) {
+  const saldo = Number(item.saldo_anterior) || 0
+  const cuota = Number(item.cuota_mes) || 0
+  item.nuevo_saldo = Math.round((saldo + cuota) * 100) / 100
 }
 
 function closeEditor() {
@@ -566,16 +585,25 @@ onMounted(loadPeriods)
               <div class="hidden gap-2 text-xs font-medium uppercase tracking-wide text-zinc-400 sm:grid sm:grid-cols-[1fr_7rem_7rem_7rem_2rem]">
                 <span>Concepto</span><span class="text-right">Saldo anterior</span><span class="text-right">Cuota del mes</span><span class="text-right">Nuevo saldo</span><span />
               </div>
-              <div v-for="(item, index) in form.items" :key="index" class="grid gap-2 sm:grid-cols-[1fr_7rem_7rem_7rem_2rem]">
+              <div v-for="(item, index) in form.items" :key="index" class="grid gap-2 rounded-lg border border-zinc-100 p-2 dark:border-zinc-800 sm:grid-cols-[1fr_7rem_7rem_7rem_2rem] sm:border-0 sm:p-0">
                 <input v-model="item.concepto" required maxlength="80" type="text" placeholder="Administración, Parqueadero…" class="h-9 rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
-                <input v-model.number="item.saldo_anterior" type="number" step="0.01" placeholder="0" class="h-9 rounded-lg border border-zinc-200 bg-white px-2 text-right text-sm tabular-nums text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
-                <input v-model.number="item.cuota_mes" type="number" step="0.01" placeholder="0" class="h-9 rounded-lg border border-zinc-200 bg-white px-2 text-right text-sm tabular-nums text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
-                <input v-model.number="item.nuevo_saldo" type="number" step="0.01" placeholder="0" class="h-9 rounded-lg border border-zinc-200 bg-white px-2 text-right text-sm tabular-nums text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
+                <label class="grid gap-0.5">
+                  <span class="text-[11px] font-medium uppercase tracking-wide text-zinc-400 sm:hidden">Saldo anterior</span>
+                  <input v-model.number="item.saldo_anterior" type="number" step="0.01" placeholder="0" class="h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 text-right text-sm tabular-nums text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100" @input="syncNuevoSaldo(item)">
+                </label>
+                <label class="grid gap-0.5">
+                  <span class="text-[11px] font-medium uppercase tracking-wide text-zinc-400 sm:hidden">Cuota del mes</span>
+                  <input v-model.number="item.cuota_mes" type="number" step="0.01" placeholder="0" class="h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 text-right text-sm tabular-nums text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100" @input="syncNuevoSaldo(item)">
+                </label>
+                <label class="grid gap-0.5">
+                  <span class="text-[11px] font-medium uppercase tracking-wide text-zinc-400 sm:hidden">Nuevo saldo <span class="normal-case">(se calcula solo)</span></span>
+                  <input v-model.number="item.nuevo_saldo" type="number" step="0.01" placeholder="0" class="h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 text-right text-sm tabular-nums text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
+                </label>
                 <button type="button" class="h-9 rounded-lg text-sm font-bold text-rose-500 hover:bg-rose-50 disabled:opacity-40 dark:hover:bg-rose-950" :disabled="form.items.length === 1" aria-label="Quitar concepto" @click="removeItem(index)">×</button>
               </div>
               <button type="button" class="h-9 rounded-lg border border-dashed border-zinc-300 text-sm font-medium text-zinc-500 hover:border-emerald-500 hover:text-emerald-700 dark:border-zinc-700 dark:text-zinc-400 dark:hover:text-emerald-400" @click="addItem">+ Agregar concepto</button>
             </div>
-            <p class="mt-2 text-xs text-zinc-400">Los totales del mes los calcula Nibor automáticamente.</p>
+            <p class="mt-2 text-xs text-zinc-400">El nuevo saldo se calcula solo (saldo anterior + cuota) y puedes ajustarlo si tu cuenta trae otro valor. Los totales del mes los calcula Nibor.</p>
           </fieldset>
 
           <fieldset class="rounded-lg border border-zinc-200 p-4 dark:border-zinc-700">
