@@ -119,9 +119,10 @@ Nibor.com es una app madre. Finanzas queda como el primer módulo productivo; lo
    - Primer MVP en `/familiar`, con API `/api/family`
 17. **Casa** (planificado):
    - Control mensual del pago de administración de una propiedad, preparado para varias propiedades en el futuro
-   - Historial por año con fecha límite, fecha real de pago, valor base, descuento, mora, total pagado y estado calculado
+   - Cada cuenta mensual admite conceptos dinámicos con saldo anterior, cuota del mes y nuevo saldo; el descuento guarda porcentaje, valor, fecha límite y total descontado sin asumir que aplica a todos los conceptos
+   - Historial por año con fechas de emisión/descuento/vencimiento/pago, valor pagado, mora y estado calculado
    - Resumen backend de meses pagados/pendientes, pagos a tiempo/en mora, descuentos, moras y total histórico
-   - Un comprobante PDF privado por mensualidad, guardado en R2 y disponible para visualizar o descargar dentro de Cloudflare Access
+   - Dos PDFs privados opcionales por mensualidad —cuenta de cobro y comprobante de pago— guardados en R2 y disponibles dentro de Cloudflare Access
    - Primer MVP previsto en `/casa`, con API `/api/home`
 
 ## 3. Modelo de datos (D1 / SQLite semantics)

@@ -100,22 +100,24 @@ Notas técnicas para Fase 1:
 ## Módulo Casa — administración y comprobantes (pendiente)
 
 - [ ] 16.1 Definir y documentar el modelo: una propiedad configurable y un registro único por mes de administración, preparado para admitir más propiedades en el futuro.
-- [ ] 16.2 Crear migración D1 para `home_properties` y `home_administration_payments`, sin incluir dirección, valores ni comprobantes reales en seeds o pruebas.
-- [ ] 16.3 Guardar por mensualidad: año, mes, fecha límite, valor base, descuento, mora, fecha de pago, notas y metadatos del comprobante PDF.
-- [ ] 16.4 Calcular únicamente en backend el estado (`Pendiente`, `A tiempo`, `En mora`) y el total pagado (`valor_base - descuento + mora`); impedir duplicados de propiedad/año/mes y valores negativos.
-- [ ] 16.5 Implementar API REST `/api/home`: perfil de la casa, CRUD de mensualidades, historial filtrable por año/estado y resumen con meses pagados, pendientes, a tiempo, en mora, descuentos, moras y total pagado.
-- [ ] 16.6 Implementar comprobantes privados en R2: subir solo PDF válido, reemplazar/eliminar, visualizar inline y descargar, con `Cache-Control: no-store`.
-- [ ] 16.7 Crear `CasaView.vue`, ruta `/casa` y entrada `Casa` en el menú lateral con estado vacío amable y diseño responsive/dark.
-- [ ] 16.8 Crear cabecera de resumen y filtros; historial mensual debe mostrar periodo, fecha límite, fecha pagada, estado, base, descuento, mora, total y acciones del comprobante.
-- [ ] 16.9 Crear modal para registrar/editar una mensualidad y adjuntar el comprobante, con total previsto visible antes de guardar y mensajes claros de validación.
-- [ ] 16.10 Agregar smoke aislado para migración, CRUD, duplicados, cálculos backend, estados a tiempo/en mora/pendiente, PDF roundtrip y limpieza; ejecutar `npm test`, build y smoke.
-- [ ] 16.11 Aplicar la migración remota, desplegar desde `Documents\\Git\\Nibor\\Nibor.com` y verificar `/casa` en escritorio y móvil sin overflow ni errores.
+- [ ] 16.2 Crear migración D1 para `home_properties`, `home_administration_periods` y `home_administration_items`, sin incluir dirección, nombres, códigos, valores ni documentos reales en seeds o pruebas.
+- [ ] 16.3 Guardar por periodo la información de la cuenta de cobro: año/mes, fecha de emisión, número de cuenta, fecha límite de descuento, fecha de vencimiento opcional, saldo anterior total, cuotas del mes, nuevo saldo, porcentaje/valor de descuento, total con descuento y notas.
+- [ ] 16.4 Guardar conceptos dinámicos por periodo —por ejemplo Administración, Parqueadero o Retroactivo— con `saldo_anterior`, `cuota_mes` y `nuevo_saldo`; no asumir que el descuento aplica a todos los conceptos.
+- [ ] 16.5 Guardar el pago por separado: fecha real, valor pagado y mora cobrada; calcular únicamente en backend los totales y el estado (`Pendiente`, `Pagado con descuento`, `Pagado sin descuento`, `En mora`). No inferir mora solo por superar la fecha de descuento: usar fecha de vencimiento y/o mora efectivamente cobrada.
+- [ ] 16.6 Implementar API REST `/api/home`: perfil de la casa, CRUD de periodos/conceptos/pagos, historial filtrable por año/estado y resumen con meses pagados, pendientes, con descuento, sin descuento, en mora, descuentos, moras y total pagado.
+- [ ] 16.7 Implementar dos documentos privados en R2 por periodo: `Cuenta de cobro` y `Comprobante de pago`; aceptar solo PDF válido, reemplazar/eliminar, visualizar inline y descargar con `Cache-Control: no-store`.
+- [ ] 16.8 Crear `CasaView.vue`, ruta `/casa` y entrada `Casa` en el menú lateral con estado vacío amable y diseño responsive/dark.
+- [ ] 16.9 Crear cabecera de resumen y filtros; el historial debe mostrar periodo, conceptos, saldo anterior, cuotas, nuevo saldo, descuento/fecha límite, fecha y valor pagado, mora, estado y acciones para ambos PDFs.
+- [ ] 16.10 Crear modal para registrar/editar una cuenta mensual, agregar/quitar conceptos dinámicos, registrar el pago y adjuntar cada documento por separado; mostrar totales backend y validaciones claras.
+- [ ] 16.11 Agregar smoke aislado para migración, CRUD, duplicados, conceptos, cálculos backend, estados, dos PDF roundtrip y limpieza; ejecutar `npm test`, build y smoke.
+- [ ] 16.12 Aplicar la migración remota, desplegar desde `Documents\\Git\\Nibor\\Nibor.com` y verificar `/casa` en escritorio y móvil sin overflow ni errores.
 
 Decisiones iniciales para el handoff:
 
 - El MVP no creará movimientos automáticos en Gastos e Ingresos para evitar duplicar la administración que ya pueda existir como gasto fijo; esa integración se evaluará aparte.
-- El comprobante es opcional y privado; D1 guarda únicamente metadatos y R2 guarda el archivo.
+- La imagen de referencia es una `Cuenta de cobro`, no la evidencia bancaria del pago. Ambos archivos son opcionales y privados; D1 guarda únicamente metadatos y R2 guarda los PDFs.
 - Una mensualidad conserva sus propios valores y fecha límite, para que cambios futuros en la tarifa o en el descuento no alteren el historial anterior.
+- La cuenta de referencia contiene datos personales; solo se documenta su estructura. Nombres, dirección, identificación tributaria, código de inmueble y valores reales no se copian al repositorio ni al chat.
 - Los datos reales se cargarán exclusivamente desde la UI; nunca en migraciones, fixtures, logs o smoke.
 
 ## Decisiones tomadas
