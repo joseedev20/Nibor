@@ -41,12 +41,15 @@ Actualizado: 2026-07-12 15:10 -05:00
 | 13 — Vehículos | Claude + Codex | Completada | Tarjeta de propiedad permanente y licencia de conducción con PDF único, categorías y vencimientos independientes publicadas |
 | 14 — Notificaciones | Claude + Codex | Completada | Backend/cron/Pushover v2 por Claude; configuración contextual por módulo, campana, `/notificaciones`, smoke y docs por Codex |
 | 15 — Familiar | Codex | Completada | Directorio privado, identificación visible, visor/descarga PDF en R2, responsive y smoke |
+| 16 — Casa | Codex / Claude | Planificada | Seguir en orden `TAREAS_CODEX.md` 16.1–16.11: administración mensual, mora/descuento, historial y comprobantes R2 |
 
 ## Bloqueos activos
 
 - Access ya tiene dos correos exactos autorizados y OTP por correo; `workers.dev`/Preview URLs siguen desactivados. El Worker se despliega desde Git en `niborapp.com`.
 
 ## Handoff actual
+
+- 2026-07-15: usuario solicita módulo `/casa` para administrar mensualidades de una propiedad. El alcance y las decisiones de continuidad quedaron detallados en `TAREAS_CODEX.md` 16.1–16.11; todavía no se ha creado migración, API ni UI.
 
 - Codex implementó Fase 1, Fase 2 y Fase 4.
 - Codex completó apoyo a Claude: toggle dark mode y endpoint transaccional `POST /api/close-month`.

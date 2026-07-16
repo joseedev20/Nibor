@@ -97,6 +97,27 @@ Notas técnicas para Fase 1:
 - [x] Validar fechas reales centralmente en `server/db.js`, incluyendo fecha, hora y fecha-hora; Salud/Eventos/Vehículos reutilizan los helpers.
 - [x] Agregar `npm test` y `npm run smoke` aislado sobre D1/R2 temporales. El smoke dejó de depender de los 5 hábitos/910 eventos personales y cubre fechas imposibles.
 
+## Módulo Casa — administración y comprobantes (pendiente)
+
+- [ ] 16.1 Definir y documentar el modelo: una propiedad configurable y un registro único por mes de administración, preparado para admitir más propiedades en el futuro.
+- [ ] 16.2 Crear migración D1 para `home_properties` y `home_administration_payments`, sin incluir dirección, valores ni comprobantes reales en seeds o pruebas.
+- [ ] 16.3 Guardar por mensualidad: año, mes, fecha límite, valor base, descuento, mora, fecha de pago, notas y metadatos del comprobante PDF.
+- [ ] 16.4 Calcular únicamente en backend el estado (`Pendiente`, `A tiempo`, `En mora`) y el total pagado (`valor_base - descuento + mora`); impedir duplicados de propiedad/año/mes y valores negativos.
+- [ ] 16.5 Implementar API REST `/api/home`: perfil de la casa, CRUD de mensualidades, historial filtrable por año/estado y resumen con meses pagados, pendientes, a tiempo, en mora, descuentos, moras y total pagado.
+- [ ] 16.6 Implementar comprobantes privados en R2: subir solo PDF válido, reemplazar/eliminar, visualizar inline y descargar, con `Cache-Control: no-store`.
+- [ ] 16.7 Crear `CasaView.vue`, ruta `/casa` y entrada `Casa` en el menú lateral con estado vacío amable y diseño responsive/dark.
+- [ ] 16.8 Crear cabecera de resumen y filtros; historial mensual debe mostrar periodo, fecha límite, fecha pagada, estado, base, descuento, mora, total y acciones del comprobante.
+- [ ] 16.9 Crear modal para registrar/editar una mensualidad y adjuntar el comprobante, con total previsto visible antes de guardar y mensajes claros de validación.
+- [ ] 16.10 Agregar smoke aislado para migración, CRUD, duplicados, cálculos backend, estados a tiempo/en mora/pendiente, PDF roundtrip y limpieza; ejecutar `npm test`, build y smoke.
+- [ ] 16.11 Aplicar la migración remota, desplegar desde `Documents\\Git\\Nibor\\Nibor.com` y verificar `/casa` en escritorio y móvil sin overflow ni errores.
+
+Decisiones iniciales para el handoff:
+
+- El MVP no creará movimientos automáticos en Gastos e Ingresos para evitar duplicar la administración que ya pueda existir como gasto fijo; esa integración se evaluará aparte.
+- El comprobante es opcional y privado; D1 guarda únicamente metadatos y R2 guarda el archivo.
+- Una mensualidad conserva sus propios valores y fecha límite, para que cambios futuros en la tarifa o en el descuento no alteren el historial anterior.
+- Los datos reales se cargarán exclusivamente desde la UI; nunca en migraciones, fixtures, logs o smoke.
+
 ## Decisiones tomadas
 
 - [x] 2026-07-12 15:05 Familiar MVP: migración `0022_family.sql`, API `/api/family`, PDFs privados en R2, vista `/familiar`, navegación y smoke. Decisión: mostrar el número completo porque el usuario lo necesita a mano; no incluir ningún dato familiar real en migraciones ni pruebas. D1 remota migrada; `npm test`, build, smoke aislado y responsive 390 px OK.
