@@ -172,6 +172,10 @@ async function openEditor(period = null) {
       form.anio = template.anio
       form.mes = template.mes
       form.items = template.items.map((item) => ({ ...item }))
+      form.descuento_pct = template.descuento_pct ?? ''
+      form.descuento_valor = template.descuento_valor ?? ''
+      form.fecha_limite_descuento = template.fecha_limite_descuento ?? ''
+      form.fecha_vencimiento = template.fecha_vencimiento ?? ''
     }
   } catch {
     // sin plantilla se conservan los valores por defecto
@@ -248,8 +252,15 @@ async function deletePeriod() {
 
 function openPayment(period) {
   paymentPeriod.value = period
-  paymentForm.fecha_pago = period.fecha_pago ?? ''
-  paymentForm.valor_pagado = period.valor_pagado ?? ''
+  const today = new Date().toISOString().slice(0, 10)
+  paymentForm.fecha_pago = period.fecha_pago ?? today
+  // Sugerencia: total con descuento si hoy alcanza la fecha límite, si no el total del mes.
+  const suggested = period.total_con_descuento_calculado !== null
+    && period.fecha_limite_descuento
+    && today <= period.fecha_limite_descuento
+    ? period.total_con_descuento_calculado
+    : period.total_nuevo_saldo
+  paymentForm.valor_pagado = period.valor_pagado ?? (suggested || '')
   paymentForm.mora_cobrada = period.mora_cobrada ?? ''
   editorError.value = ''
   paymentOpen.value = true
@@ -475,9 +486,12 @@ onMounted(loadPeriods)
                   </tr>
                 </tbody>
               </table>
-              <p v-if="period.total_con_descuento !== null && period.fecha_limite_descuento" class="mt-2 text-xs text-emerald-700 dark:text-emerald-400">
-                💡 Pagando antes del {{ formatDate(period.fecha_limite_descuento) }}: <span class="font-semibold">{{ formatCOP(period.total_con_descuento) }}</span>
-                <template v-if="period.descuento_valor"> (descuento de {{ formatCOP(period.descuento_valor) }})</template>
+              <p v-if="period.total_con_descuento_calculado !== null" class="mt-2 text-xs text-emerald-700 dark:text-emerald-400">
+                💡
+                <template v-if="period.fecha_limite_descuento">Pagando antes del {{ formatDate(period.fecha_limite_descuento) }}: </template>
+                <template v-else>Con descuento: </template>
+                <span class="font-semibold">{{ formatCOP(period.total_con_descuento_calculado) }}</span>
+                <template v-if="period.descuento_valor_calculado"> (descuento de {{ formatCOP(period.descuento_valor_calculado) }}<template v-if="period.descuento_pct"> · {{ period.descuento_pct }} %</template>)</template>
               </p>
               <p v-if="period.fecha_vencimiento" class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Vence el {{ formatDate(period.fecha_vencimiento) }}</p>
               <p v-if="period.notas" class="mt-2 whitespace-pre-line text-xs text-zinc-500 dark:text-zinc-400">{{ period.notas }}</p>

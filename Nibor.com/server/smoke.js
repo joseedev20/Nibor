@@ -829,8 +829,23 @@ async function run() {
     || !templateItem
     || templateItem.saldo_anterior !== 90000
     || templateItem.nuevo_saldo !== 180000
+    || homeTemplate.descuento_valor !== 5000
+    || homeTemplate.fecha_limite_descuento !== `${smokeYear}-02-10`
+    || homeTemplate.fecha_vencimiento !== `${smokeYear}-02-28`
   ) {
-    throw new Error(`Plantilla del mes siguiente no arrastro los saldos: ${JSON.stringify(homeTemplate)}`)
+    throw new Error(`Plantilla del mes siguiente no arrastro saldos/descuento/fechas: ${JSON.stringify(homeTemplate)}`)
+  }
+
+  const pctOnlyPeriod = await put(`/home/periods/${homePeriod.id}`, {
+    descuento_pct: 10,
+    descuento_valor: null,
+    total_con_descuento: null,
+  })
+  if (pctOnlyPeriod.descuento_valor_calculado !== 10000 || pctOnlyPeriod.total_con_descuento_calculado !== 90000) {
+    throw new Error(`Descuento derivado del porcentaje no cuadra: ${JSON.stringify({
+      valor: pctOnlyPeriod.descuento_valor_calculado,
+      total: pctOnlyPeriod.total_con_descuento_calculado,
+    })}`)
   }
 
   const blockedProperty = await expectFailure(`/home/properties/${homeProperty.id}`, { method: 'DELETE' })

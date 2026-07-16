@@ -187,32 +187,45 @@ function computeEstado(period, today = todayIso()) {
   return 'pendiente'
 }
 
-function discountEarned(period) {
-  if (period.descuento_valor !== null && Number.isFinite(Number(period.descuento_valor))) {
-    return Number(period.descuento_valor)
-  }
-  const total = Number(period.total_nuevo_saldo ?? 0)
-  const discounted = Number(period.total_con_descuento)
-  if (period.total_con_descuento !== null && Number.isFinite(discounted) && total > discounted) {
-    return total - discounted
-  }
-  return 0
-}
-
 function enrichPeriod(period, items, today = todayIso()) {
+  const round2 = (value) => Math.round(value * 100) / 100
   const total_saldo_anterior = items.reduce((sum, item) => sum + Number(item.saldo_anterior ?? 0), 0)
   const total_cuota_mes = items.reduce((sum, item) => sum + Number(item.cuota_mes ?? 0), 0)
   const total_nuevo_saldo = items.reduce((sum, item) => sum + Number(item.nuevo_saldo ?? 0), 0)
+
+  // Descuento efectivo: lo digitado manda; si solo hay porcentaje, se deriva
+  // del total del mes (el usuario puede sobreescribir valor/total cuando el
+  // descuento aplique solo a algunos conceptos).
+  const pct = Number(period.descuento_pct ?? 0)
+  let descuentoValor = period.descuento_valor === null || period.descuento_valor === undefined
+    ? null
+    : Number(period.descuento_valor)
+  let totalConDescuento = period.total_con_descuento === null || period.total_con_descuento === undefined
+    ? null
+    : Number(period.total_con_descuento)
+  if (descuentoValor === null && totalConDescuento !== null && totalConDescuento <= total_nuevo_saldo) {
+    descuentoValor = round2(total_nuevo_saldo - totalConDescuento)
+  }
+  if (totalConDescuento === null && descuentoValor !== null) {
+    totalConDescuento = round2(total_nuevo_saldo - descuentoValor)
+  }
+  if (descuentoValor === null && totalConDescuento === null && pct > 0) {
+    descuentoValor = round2(total_nuevo_saldo * pct / 100)
+    totalConDescuento = round2(total_nuevo_saldo - descuentoValor)
+  }
+
   const enriched = {
     ...period,
     items,
     total_saldo_anterior,
     total_cuota_mes,
     total_nuevo_saldo,
+    descuento_valor_calculado: descuentoValor,
+    total_con_descuento_calculado: totalConDescuento,
     pagado: period.fecha_pago !== null && period.valor_pagado !== null,
   }
   enriched.estado = computeEstado(enriched, today)
-  enriched.descuento_ganado = enriched.estado === 'pagado_con_descuento' ? discountEarned(enriched) : 0
+  enriched.descuento_ganado = enriched.estado === 'pagado_con_descuento' ? (descuentoValor ?? 0) : 0
   return enriched
 }
 
@@ -261,9 +274,22 @@ home.get('/periods/template', async (c) => {
   const pagado = latest.fecha_pago !== null && latest.valor_pagado !== null
   const next = latest.mes === 12 ? { anio: latest.anio + 1, mes: 1 } : { anio: latest.anio, mes: latest.mes + 1 }
 
+  // Fechas límite/vencimiento del mes siguiente: mismo día del mes, ajustado
+  // a la longitud del mes destino (ej. 31 → 30).
+  const shiftDate = (value) => {
+    if (!value) return null
+    const day = Number(value.slice(8, 10))
+    const lastDay = new Date(next.anio, next.mes, 0).getDate()
+    return `${next.anio}-${String(next.mes).padStart(2, '0')}-${String(Math.min(day, lastDay)).padStart(2, '0')}`
+  }
+
   return ok(c, {
     ...next,
     basado_en: { anio: latest.anio, mes: latest.mes, pagado },
+    descuento_pct: latest.descuento_pct,
+    descuento_valor: latest.descuento_valor,
+    fecha_limite_descuento: shiftDate(latest.fecha_limite_descuento),
+    fecha_vencimiento: shiftDate(latest.fecha_vencimiento),
     items: items.map((item) => {
       const saldoAnterior = pagado ? 0 : Number(item.nuevo_saldo ?? 0)
       const cuotaMes = Number(item.cuota_mes ?? 0)
