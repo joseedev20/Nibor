@@ -109,6 +109,7 @@ Notas técnicas para Fase 1:
 - [x] 2026-07-15 Suscripciones: agregar filtro Todos/Ingresos/Gastos al Histórico de fijos, manteniendo el año y sin cambios de API o D1. Publicado como `be1ca2be-5b0a-4ba5-8f95-496b5ed0267a`; verificado con datos reales en escritorio/móvil, sin overflow ni errores de consola.
 - [x] 2026-07-15 Suscripciones: agregar al pie del Histórico de fijos el resumen anual del filtro; el backend devuelve ingresos, gastos y balance para no calcular cifras financieras en Vue. Publicado como `dd97dbd1-0418-4363-a42c-be7877474670` y verificado con datos reales en escritorio/móvil.
 - [x] 2026-07-15 Notificaciones: limitar la bandeja a hoy y ayer, mostrar inicialmente las 5 más recientes y revelar bloques de 5 con `Mostrar más`. API, test, build, smoke aislado y navegador escritorio/móvil OK; publicado como `d595f491-6178-4599-b0ea-155bc5926f5d`.
+- [x] 2026-07-15 Notificaciones: ocultar la configuración general y Pushover en un modal abierto desde un icono de engranaje junto al título, siguiendo el patrón de Eventos. Test y build OK.
 
 - 2026-07-04: Codex recomienda y adopta Cloudflare D1 para este proyecto. La API se implementará como Cloudflare Worker/Hono sobre binding `env.DB`; no Express/better-sqlite3 en el runtime objetivo.
 - 2026-07-04 11:50: Se agregó endpoint `/api/categories` aunque el CRUD UI aparece en Fase 4, porque el store y movimientos/suscripciones necesitan el catálogo desde Fase 1.

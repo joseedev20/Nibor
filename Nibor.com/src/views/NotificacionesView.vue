@@ -30,6 +30,7 @@ const error = ref('')
 const notice = ref('')
 const runSummary = ref(null)
 const visibleCount = ref(PAGE_SIZE)
+const settingsOpen = ref(false)
 
 const typeMeta = {
   suscripcion: { label: 'Suscripción', letter: 'S', class: 'bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-300' },
@@ -381,6 +382,11 @@ async function saveSettings() {
   }
 }
 
+async function saveAndCloseSettings() {
+  await saveSettings()
+  if (!error.value) settingsOpen.value = false
+}
+
 async function testPush() {
   testing.value = true
   error.value = ''
@@ -461,7 +467,21 @@ onMounted(() => loadAll({ run: true }))
     <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
       <div>
         <p class="text-sm font-semibold uppercase text-emerald-700 dark:text-emerald-400">Centro de notificaciones</p>
-        <h1 class="mt-1 text-2xl font-bold">Notificaciones</h1>
+        <div class="mt-1 flex items-center gap-2">
+          <h1 class="text-2xl font-bold">Notificaciones</h1>
+          <button
+            type="button"
+            class="flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-500 transition hover:border-emerald-300 hover:text-emerald-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:border-emerald-800 dark:hover:text-emerald-400"
+            title="Configurar notificaciones"
+            aria-label="Configurar notificaciones"
+            @click="settingsOpen = true"
+          >
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9.6 3.3l.5 1.8a7.5 7.5 0 013.8 0l.5-1.8 2.2 1.3-1.3 1.4a7.6 7.6 0 011.9 3.3l1.9-.4v2.6l-1.9-.4a7.6 7.6 0 01-1.9 3.3l1.3 1.4-2.2 1.3-.5-1.8a7.5 7.5 0 01-3.8 0l-.5 1.8-2.2-1.3 1.3-1.4a7.6 7.6 0 01-1.9-3.3l-1.9.4V8.9l1.9.4A7.6 7.6 0 018.7 6L7.4 4.6l2.2-1.3z" />
+              <circle cx="12" cy="10.2" r="2.6" />
+            </svg>
+          </button>
+        </div>
         <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Avisos de suscripciones, hábitos, vehículos y eventos, con entrega push configurable por regla.</p>
       </div>
 
@@ -551,18 +571,19 @@ onMounted(() => loadAll({ run: true }))
       </div>
     </section>
 
-    <section class="mt-6 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-      <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h2 class="text-sm font-semibold">Configuración</h2>
-          <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Las notificaciones in-app siguen activas; Pushover se controla por regla, prioridad y sonido.</p>
+    <div v-if="settingsOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 px-4 py-6 backdrop-blur-sm" @click.self="settingsOpen = false">
+      <section role="dialog" aria-modal="true" aria-labelledby="notification-settings-title" class="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
+        <div class="flex items-start justify-between gap-4 border-b border-zinc-200 px-4 py-4 sm:px-5 dark:border-zinc-800">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Configuración</p>
+            <h2 id="notification-settings-title" class="mt-0.5 text-base font-semibold text-zinc-900 dark:text-zinc-100">Notificaciones y Pushover</h2>
+            <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Las notificaciones in-app siguen activas; configura reglas, entrega y push desde aquí.</p>
+          </div>
+          <button type="button" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200" aria-label="Cerrar configuración de notificaciones" @click="settingsOpen = false">✕</button>
         </div>
-        <button type="button" class="h-9 rounded-lg bg-zinc-900 px-3 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-white" :disabled="saving" @click="saveSettings">
-          {{ saving ? 'Guardando...' : 'Guardar' }}
-        </button>
-      </div>
 
-      <div class="mt-4 grid gap-4 xl:grid-cols-2">
+        <div class="overflow-y-auto p-4 sm:p-5">
+          <div class="grid gap-4 xl:grid-cols-2">
         <article v-for="rule in ruleCards" :key="rule.suffix" class="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
           <div class="flex items-start justify-between gap-3">
             <div class="flex min-w-0 items-start gap-3">
@@ -599,9 +620,9 @@ onMounted(() => loadAll({ run: true }))
             </label>
           </div>
         </article>
-      </div>
+          </div>
 
-      <div class="mt-4 grid gap-4 xl:grid-cols-3">
+          <div class="mt-4 grid gap-4 xl:grid-cols-3">
         <article class="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
           <h3 class="text-sm font-semibold">Ajustes de reglas</h3>
           <div class="mt-3 grid gap-3">
@@ -683,7 +704,16 @@ onMounted(() => loadAll({ run: true }))
             </button>
           </div>
         </article>
-      </div>
-    </section>
+          </div>
+        </div>
+
+        <div class="flex flex-col-reverse gap-2 border-t border-zinc-200 px-4 py-4 sm:flex-row sm:justify-end sm:px-5 dark:border-zinc-800">
+          <button type="button" class="h-10 rounded-lg border border-zinc-200 px-4 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800" @click="settingsOpen = false">Cancelar</button>
+          <button type="button" class="h-10 rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-white" :disabled="saving" @click="saveAndCloseSettings">
+            {{ saving ? 'Guardando...' : 'Guardar configuración' }}
+          </button>
+        </div>
+      </section>
+    </div>
   </div>
 </template>
