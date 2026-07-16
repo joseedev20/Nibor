@@ -112,7 +112,8 @@ Notas técnicas para Fase 1:
 - [x] 16.9 Cabecera de resumen (total pagado, descuentos ganados, moras) y filtros por año/estado; el historial muestra conceptos con totales, descuento/fecha límite, vencimiento, pago, mora, estado y acciones del PDF.
 - [x] 16.10 Modal para registrar/editar la cuenta mensual con conceptos dinámicos (+/−), modal aparte para el pago y adjuntar el PDF desde la tarjeta del mes; totales backend y validaciones claras.
 - [x] 16.11 Smoke aislado: CRUD, duplicado 409, fecha imposible, totales backend, estados (pendiente → con descuento → en mora → pendiente), resumen, filtro por estado, PDF roundtrip inline con no-store y limpieza. `npm test`, build y smoke OK.
-- [ ] 16.12 Aplicar la migración remota, desplegar desde `Documents\\Git\\Nibor\\Nibor.com` y verificar `/casa` en escritorio y móvil sin overflow ni errores.
+- [x] 16.12 Aplicar la migración remota, desplegar desde `Documents\\Git\\Nibor\\Nibor.com` y verificar `/casa` en escritorio y móvil sin overflow ni errores.
+  - Migración 0024 aplicada en D1 remota; deploy `64ffdf04` desde el repo Git; `/casa` y `/api/*` responden detrás de Access. Verificación visual final en navegador queda a cargo del usuario al iniciar sesión.
 
 Decisiones iniciales para el handoff:
 

@@ -41,7 +41,7 @@ Actualizado: 2026-07-15 20:20 -05:00
 | 13 — Vehículos | Claude + Codex | Completada | Tarjeta de propiedad permanente y licencia de conducción con PDF único, categorías y vencimientos independientes publicadas |
 | 14 — Notificaciones | Claude + Codex | Completada | Backend/cron/Pushover v2 por Claude; configuración contextual por módulo, campana, `/notificaciones`, smoke y docs por Codex |
 | 15 — Familiar | Codex | Completada | Directorio privado, identificación visible, visor/descarga PDF en R2, responsive y smoke |
-| 16 — Casa | Codex (plan) + Claude (implementación) | Completada | Migración `0024_home.sql`, API `/api/home`, vista `/casa`, menú, smoke y docs; falta solo verificar producción tras deploy (16.12) |
+| 16 — Casa | Codex (plan) + Claude (implementación) | Completada | Migración `0024_home.sql` local y remota, API `/api/home`, vista `/casa`, menú, smoke, docs y deploy `64ffdf04` publicados |
 
 ## Bloqueos activos
 
