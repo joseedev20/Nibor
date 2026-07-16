@@ -1,6 +1,6 @@
 # Estado compartido — Nibor.com
 
-Actualizado: 2026-07-12 15:10 -05:00
+Actualizado: 2026-07-15 20:20 -05:00
 
 ## Decisión activa
 
@@ -41,7 +41,7 @@ Actualizado: 2026-07-12 15:10 -05:00
 | 13 — Vehículos | Claude + Codex | Completada | Tarjeta de propiedad permanente y licencia de conducción con PDF único, categorías y vencimientos independientes publicadas |
 | 14 — Notificaciones | Claude + Codex | Completada | Backend/cron/Pushover v2 por Claude; configuración contextual por módulo, campana, `/notificaciones`, smoke y docs por Codex |
 | 15 — Familiar | Codex | Completada | Directorio privado, identificación visible, visor/descarga PDF en R2, responsive y smoke |
-| 16 — Casa | Codex / Claude | Planificada | Seguir en orden `TAREAS_CODEX.md` 16.1–16.12: cuentas mensuales por conceptos, pagos, mora/descuento, historial y dos PDFs R2 |
+| 16 — Casa | Codex (plan) + Claude (implementación) | Completada | Migración `0024_home.sql`, API `/api/home`, vista `/casa`, menú, smoke y docs; falta solo verificar producción tras deploy (16.12) |
 
 ## Bloqueos activos
 
@@ -49,7 +49,7 @@ Actualizado: 2026-07-12 15:10 -05:00
 
 ## Handoff actual
 
-- 2026-07-15: usuario solicita módulo `/casa` para administrar mensualidades de una propiedad. La cuenta de cobro de referencia exige conceptos dinámicos, totales de saldo/cuota/nuevo saldo, descuento con fecha límite y separar `Cuenta de cobro` de `Comprobante de pago`. El alcance quedó en `TAREAS_CODEX.md` 16.1–16.12; todavía no se ha creado migración, API ni UI.
+- 2026-07-15: Claude implementó el módulo Casa (16.1–16.11). Cambio de alcance confirmado por el usuario: UN solo PDF por mensualidad (cuenta de cobro + comprobante unidos por él antes de subir); el pago sigue guardándose por separado (`fecha_pago`, `valor_pagado`, `mora_cobrada`) porque de ahí salen los estados backend. Estados: `pendiente`, `pagado_con_descuento` (pago dentro de la fecha límite con descuento), `pagado_sin_descuento`, `en_mora` (sin pagar y vencida, o pago con mora cobrada — nunca inferida solo por la fecha de descuento). El MVP no crea movimientos automáticos en Gastos.
 
 - Codex implementó Fase 1, Fase 2 y Fase 4.
 - Codex completó apoyo a Claude: toggle dark mode y endpoint transaccional `POST /api/close-month`.
@@ -111,4 +111,5 @@ Actualizado: 2026-07-12 15:10 -05:00
 - `notifications` usa `dedupe_key` para no duplicar reglas del cron. Pushover requiere `pushover_user` y `pushover_token` guardados en settings; sin llaves, solo funciona la bandeja in-app. La tabla guarda prioridad y sonido por notificación; `notification_settings` guarda la entrega por regla, silencio, pausa, resumen diario, franjas múltiples de hábitos, programación de vehículos y repetición de vencidas.
 - `family_members` guarda información identificatoria sensible; sus PDFs viven en R2 privado (`FILES`). Nunca incluir familiares, números de documento ni PDFs reales en migraciones, seeds, fixtures, logs o smoke.
 - Vehículos muestra anillos CSS de días restantes para SOAT y técnico-mecánica, adaptados a modo claro/oscuro y móvil. Es una mejora solo de UI: no cambia D1 ni la API.
+- `home_properties`/`home_administration_periods`/`home_administration_items` guardan la administración de Nibor Casa. Totales de conceptos, estado del periodo y resumen anual se calculan SOLO en backend; el PDF único del mes vive en R2 (`casa/{period_id}/…`) con `no-store`. Nunca incluir direcciones, números de cuenta, valores ni PDFs reales en migraciones, seeds o smoke.
 - 2026-07-15: ampliación de Vehículos completada. Migración `0023` aplicada en D1 remota; Tarjeta de propiedad agregada a vehículos existentes/nuevos y licencia personal publicada con PDF privado, categorías dinámicas, vencimientos backend y notificaciones.

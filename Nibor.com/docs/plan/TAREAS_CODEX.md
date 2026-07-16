@@ -97,25 +97,28 @@ Notas técnicas para Fase 1:
 - [x] Validar fechas reales centralmente en `server/db.js`, incluyendo fecha, hora y fecha-hora; Salud/Eventos/Vehículos reutilizan los helpers.
 - [x] Agregar `npm test` y `npm run smoke` aislado sobre D1/R2 temporales. El smoke dejó de depender de los 5 hábitos/910 eventos personales y cubre fechas imposibles.
 
-## Módulo Casa — administración y comprobantes (pendiente)
+## Módulo Casa — administración y comprobantes (implementado por Claude)
 
-- [ ] 16.1 Definir y documentar el modelo: una propiedad configurable y un registro único por mes de administración, preparado para admitir más propiedades en el futuro.
-- [ ] 16.2 Crear migración D1 para `home_properties`, `home_administration_periods` y `home_administration_items`, sin incluir dirección, nombres, códigos, valores ni documentos reales en seeds o pruebas.
-- [ ] 16.3 Guardar por periodo la información de la cuenta de cobro: año/mes, fecha de emisión, número de cuenta, fecha límite de descuento, fecha de vencimiento opcional, saldo anterior total, cuotas del mes, nuevo saldo, porcentaje/valor de descuento, total con descuento y notas.
-- [ ] 16.4 Guardar conceptos dinámicos por periodo —por ejemplo Administración, Parqueadero o Retroactivo— con `saldo_anterior`, `cuota_mes` y `nuevo_saldo`; no asumir que el descuento aplica a todos los conceptos.
-- [ ] 16.5 Guardar el pago por separado: fecha real, valor pagado y mora cobrada; calcular únicamente en backend los totales y el estado (`Pendiente`, `Pagado con descuento`, `Pagado sin descuento`, `En mora`). No inferir mora solo por superar la fecha de descuento: usar fecha de vencimiento y/o mora efectivamente cobrada.
-- [ ] 16.6 Implementar API REST `/api/home`: perfil de la casa, CRUD de periodos/conceptos/pagos, historial filtrable por año/estado y resumen con meses pagados, pendientes, con descuento, sin descuento, en mora, descuentos, moras y total pagado.
-- [ ] 16.7 Implementar dos documentos privados en R2 por periodo: `Cuenta de cobro` y `Comprobante de pago`; aceptar solo PDF válido, reemplazar/eliminar, visualizar inline y descargar con `Cache-Control: no-store`.
-- [ ] 16.8 Crear `CasaView.vue`, ruta `/casa` y entrada `Casa` en el menú lateral con estado vacío amable y diseño responsive/dark.
-- [ ] 16.9 Crear cabecera de resumen y filtros; el historial debe mostrar periodo, conceptos, saldo anterior, cuotas, nuevo saldo, descuento/fecha límite, fecha y valor pagado, mora, estado y acciones para ambos PDFs.
-- [ ] 16.10 Crear modal para registrar/editar una cuenta mensual, agregar/quitar conceptos dinámicos, registrar el pago y adjuntar cada documento por separado; mostrar totales backend y validaciones claras.
-- [ ] 16.11 Agregar smoke aislado para migración, CRUD, duplicados, conceptos, cálculos backend, estados, dos PDF roundtrip y limpieza; ejecutar `npm test`, build y smoke.
+- [x] 16.1 Definir y documentar el modelo: una propiedad configurable y un registro único por mes de administración, preparado para admitir más propiedades en el futuro.
+- [x] 16.2 Crear migración D1 para `home_properties`, `home_administration_periods` y `home_administration_items`, sin incluir dirección, nombres, códigos, valores ni documentos reales en seeds o pruebas.
+  - Migración `0024_home.sql`; UNIQUE (property_id, anio, mes) garantiza un registro por mes.
+- [x] 16.3 Guardar por periodo la información de la cuenta de cobro: año/mes, fecha de emisión, número de cuenta, fecha límite de descuento, fecha de vencimiento opcional, porcentaje/valor de descuento, total con descuento y notas.
+  - Saldo anterior/cuotas/nuevo saldo totales NO se guardan: se calculan en backend sumando los conceptos.
+- [x] 16.4 Guardar conceptos dinámicos por periodo con `saldo_anterior`, `cuota_mes` y `nuevo_saldo`; el descuento se guarda tal como viene en la cuenta (valor/total), nunca recalculado como porcentaje del total.
+- [x] 16.5 Guardar el pago por separado (`fecha_pago`, `valor_pagado`, `mora_cobrada` vía `PUT/DELETE /periods/:id/payment`); estado backend: `pendiente`, `pagado_con_descuento`, `pagado_sin_descuento`, `en_mora`. La mora de un mes sin pagar solo se infiere por `fecha_vencimiento`; un pago queda `en_mora` solo si hubo mora cobrada.
+- [x] 16.6 Implementar API REST `/api/home`: propiedades CRUD, periodos/conceptos/pagos, historial filtrable por año/estado y resumen backend (pagados, pendientes, con/sin descuento, en mora, descuentos ganados, moras y total pagado).
+- [x] 16.7 PDF privado en R2 por periodo: **decisión del usuario 2026-07-15 — UN solo PDF por mes** (él une cuenta de cobro + comprobante en un archivo). Solo PDF válido, reemplazar/eliminar, visor inline y descarga con `Cache-Control: no-store`. Clave R2: `casa/{period_id}/...`.
+- [x] 16.8 `CasaView.vue`, ruta `/casa` y entrada `Casa` en el menú lateral con estado vacío amable y diseño responsive/dark.
+- [x] 16.9 Cabecera de resumen (total pagado, descuentos ganados, moras) y filtros por año/estado; el historial muestra conceptos con totales, descuento/fecha límite, vencimiento, pago, mora, estado y acciones del PDF.
+- [x] 16.10 Modal para registrar/editar la cuenta mensual con conceptos dinámicos (+/−), modal aparte para el pago y adjuntar el PDF desde la tarjeta del mes; totales backend y validaciones claras.
+- [x] 16.11 Smoke aislado: CRUD, duplicado 409, fecha imposible, totales backend, estados (pendiente → con descuento → en mora → pendiente), resumen, filtro por estado, PDF roundtrip inline con no-store y limpieza. `npm test`, build y smoke OK.
 - [ ] 16.12 Aplicar la migración remota, desplegar desde `Documents\\Git\\Nibor\\Nibor.com` y verificar `/casa` en escritorio y móvil sin overflow ni errores.
 
 Decisiones iniciales para el handoff:
 
 - El MVP no creará movimientos automáticos en Gastos e Ingresos para evitar duplicar la administración que ya pueda existir como gasto fijo; esa integración se evaluará aparte.
-- La imagen de referencia es una `Cuenta de cobro`, no la evidencia bancaria del pago. Ambos archivos son opcionales y privados; D1 guarda únicamente metadatos y R2 guarda los PDFs.
+- La imagen de referencia es una `Cuenta de cobro`, no la evidencia bancaria del pago. El archivo es opcional y privado; D1 guarda únicamente metadatos y R2 guarda el PDF.
+- Cambio de alcance confirmado por el usuario (2026-07-15): un único PDF por periodo en vez de dos; los datos del pago siguen separados en D1 porque de ahí salen los estados.
 - Una mensualidad conserva sus propios valores y fecha límite, para que cambios futuros en la tarifa o en el descuento no alteren el historial anterior.
 - La cuenta de referencia contiene datos personales; solo se documenta su estructura. Nombres, dirección, identificación tributaria, código de inmueble y valores reales no se copian al repositorio ni al chat.
 - Los datos reales se cargarán exclusivamente desde la UI; nunca en migraciones, fixtures, logs o smoke.

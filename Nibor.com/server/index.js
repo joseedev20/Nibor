@@ -8,6 +8,7 @@ import family from './routes/family.js'
 import goals from './routes/goals.js'
 import habits from './routes/habits.js'
 import health from './routes/health.js'
+import homeModule from './routes/home.js'
 import knowledge from './routes/knowledge.js'
 import loans from './routes/loans.js'
 import movements from './routes/movements.js'
@@ -36,6 +37,7 @@ app.route('/movements', movements)
 app.route('/subscriptions', subscriptions)
 app.route('/goals', goals)
 app.route('/habits', habits)
+app.route('/home', homeModule)
 app.route('/salud', health)
 app.route('/knowledge', knowledge)
 app.route('/loans', loans)

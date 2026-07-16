@@ -14,6 +14,7 @@ const nav = [
   { to: '/prestamos', label: 'Préstamos', icon: 'M17 9V7a5 5 0 00-10 0v2M5 9h14l-1 11H6L5 9zm7 3v4m-2-2h4' },
   { to: '/vehiculos', label: 'Vehículos', icon: 'M8 17h8M6 11l1.5-4.5A2 2 0 019.4 5h5.2a2 2 0 011.9 1.5L18 11m-12 0h12a2 2 0 012 2v3a1 1 0 01-1 1h-1a2 2 0 11-4 0H10a2 2 0 11-4 0H5a1 1 0 01-1-1v-3a2 2 0 012-2z' },
   { to: '/familiar', label: 'Familiar', icon: 'M17 20h5v-2a4 4 0 00-4-4h-1M9 20H2v-2a4 4 0 014-4h3m6-5a3 3 0 11-6 0 3 3 0 016 0zm6 1a2.5 2.5 0 10-3.5-2.3' },
+  { to: '/casa', label: 'Casa', icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4' },
   { to: '/gastos', label: 'Gastos e Ingresos', icon: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' },
   { to: '/suscripciones', label: 'Suscripciones', icon: 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15' },
   { to: '/cierre', label: 'Cierre de mes', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },

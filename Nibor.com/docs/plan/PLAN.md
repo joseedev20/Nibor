@@ -117,13 +117,13 @@ Nibor.com es una app madre. Finanzas queda como el primer módulo productivo; lo
    - Directorio privado y dinámico con nombre, parentesco, tipo y número de documento visibles y notas opcionales
    - Un PDF opcional por familiar, guardado en R2 privado y disponible para ver o descargar dentro de Cloudflare Access
    - Primer MVP en `/familiar`, con API `/api/family`
-17. **Casa** (planificado):
+17. **Casa**:
    - Control mensual del pago de administración de una propiedad, preparado para varias propiedades en el futuro
    - Cada cuenta mensual admite conceptos dinámicos con saldo anterior, cuota del mes y nuevo saldo; el descuento guarda porcentaje, valor, fecha límite y total descontado sin asumir que aplica a todos los conceptos
-   - Historial por año con fechas de emisión/descuento/vencimiento/pago, valor pagado, mora y estado calculado
-   - Resumen backend de meses pagados/pendientes, pagos a tiempo/en mora, descuentos, moras y total histórico
-   - Dos PDFs privados opcionales por mensualidad —cuenta de cobro y comprobante de pago— guardados en R2 y disponibles dentro de Cloudflare Access
-   - Primer MVP previsto en `/casa`, con API `/api/home`
+   - Historial por año con fechas de emisión/descuento/vencimiento/pago, valor pagado, mora y estado calculado en backend (`pendiente`, `pagado_con_descuento`, `pagado_sin_descuento`, `en_mora`)
+   - Resumen backend de meses pagados/pendientes, con/sin descuento, en mora, descuentos ganados, moras y total pagado del año
+   - Un solo PDF privado opcional por mensualidad (el usuario une cuenta de cobro + comprobante de pago en un archivo), guardado en R2 y disponible dentro de Cloudflare Access
+   - MVP en `/casa`, con API `/api/home`
 
 ## 3. Modelo de datos (D1 / SQLite semantics)
 
@@ -189,6 +189,11 @@ notification_settings (clave, valor, updated_at)
 family_members   (id, nombre, parentesco, tipo_documento, numero_documento, notas, file_key, file_name, file_size, created_at, updated_at)
                  -- agregado en migración 0022; datos sensibles en D1 y PDF privado en R2, nunca en seeds/migraciones
                  -- agregado en migración 0018 y ampliado en 0019/0020/0021; settings incluye push/prioridad/sonido por regla, silencio, pausa, resumen diario, franjas de hábitos por días y programación de vehículos
+home_properties  (id, nombre, notas, activa, created_at, updated_at)
+home_administration_periods (id, property_id, anio, mes, fecha_emision, numero_cuenta, fecha_limite_descuento, fecha_vencimiento, descuento_pct, descuento_valor, total_con_descuento, fecha_pago, valor_pagado, mora_cobrada, notas, file_key, file_name, file_size, created_at, updated_at)
+                 -- UNIQUE(property_id, anio, mes); un solo PDF por mes (cuenta + comprobante unidos) en R2
+home_administration_items (id, period_id, concepto, saldo_anterior, cuota_mes, nuevo_saldo, orden)
+                 -- agregado en migración 0024 para Nibor Casa; totales y estado se calculan SOLO en backend
 ```
 
 **Fórmulas (calculadas en el backend, una sola fuente de verdad):**
@@ -215,6 +220,7 @@ family_members   (id, nombre, parentesco, tipo_documento, numero_documento, nota
 - `GET/POST/PUT/DELETE /api/vehicles` administra vehículos; subrutas para documentos, PDF en R2 y gastos: `/items`, `/items/:id/file`, `/:id/gastos`. `/license`, `/license/categories` y `/license/file` administran la licencia de conducción y sus categorías con vencimientos independientes.
 - `GET /api/notifications` lista notificaciones y `no_leidas`; acepta `fecha=YYYY-MM-DD` para un día exacto o `desde=YYYY-MM-DD` para un rango reciente. Subrutas: `/run`, `/:id/read`, `/read-all`, `/settings`, `/test-push`. `POST /api/notifications/run` acepta `hora`/`minuto`/`fecha` opcionales para smoke y devuelve `push_enviadas`, `push_retenidas`, `en_silencio` y `pausado`.
 - `GET/POST/PUT/DELETE /api/family` administra familiares; `POST/GET/DELETE /api/family/:id/file` guarda, muestra/descarga y elimina el PDF privado en R2.
+- `/api/home` administra Nibor Casa: `GET/POST/PUT/DELETE /properties` (delete bloqueado con historial), `GET /periods?property_id=&anio=&estado=` (periodos enriquecidos con totales/estado + `resumen` + `anios`), `POST/PUT/DELETE /periods/:id`, `PUT/DELETE /periods/:id/payment` para el pago separado y `POST/GET/DELETE /periods/:id/file` para el PDF único del mes en R2 con `no-store`.
 
 ## 4. Fases de trabajo
 
@@ -236,6 +242,7 @@ family_members   (id, nombre, parentesco, tipo_documento, numero_documento, nota
 | 13 | Vehículos MVP: documentos, R2 y gastos integrados | Claude |
 | 14 | Notificaciones: backend/cron por Claude, campana/vista/config/smoke/docs por Codex | Claude + Codex |
 | 15 | Familiar MVP: directorio, documentos visibles y PDFs privados en R2 | Codex |
+| 16 | Casa MVP: administración mensual por conceptos, pagos, descuento/mora y PDF privado en R2 | Codex (plan) + Claude (implementación) |
 
 Detalle de tareas: `TAREAS_CLAUDE.md` y `TAREAS_CODEX.md` en esta carpeta.
 Reglas compartidas: `CONVENCIONES.md`. **Ambos agentes deben leer CONVENCIONES.md antes de escribir código.**

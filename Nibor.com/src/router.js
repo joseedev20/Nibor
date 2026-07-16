@@ -13,6 +13,7 @@ const routes = [
   { path: '/prestamos', name: 'prestamos', component: () => import('./views/PrestamosView.vue'), meta: { title: 'Préstamos' } },
   { path: '/vehiculos', name: 'vehiculos', component: () => import('./views/VehiculosView.vue'), meta: { title: 'Vehículos' } },
   { path: '/familiar', name: 'familiar', component: () => import('./views/FamiliarView.vue'), meta: { title: 'Familiar' } },
+  { path: '/casa', name: 'casa', component: () => import('./views/CasaView.vue'), meta: { title: 'Casa' } },
   { path: '/gastos', name: 'gastos', component: () => import('./views/GastosView.vue'), meta: { title: 'Gastos e Ingresos' } },
   { path: '/suscripciones', name: 'suscripciones', component: () => import('./views/SuscripcionesView.vue'), meta: { title: 'Suscripciones' } },
   { path: '/cierre', name: 'cierre', component: () => import('./views/CierreView.vue'), meta: { title: 'Cierre de mes' } },

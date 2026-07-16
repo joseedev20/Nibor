@@ -82,6 +82,18 @@ async function cleanupSmokeData(platformId) {
     await del(`/family/${member.id}`)
   }
 
+  const homeProperties = await request('/home/properties')
+  for (const propertyEntry of homeProperties.filter((entry) => String(entry.nombre).startsWith('Smoke '))) {
+    const homeData = await request(`/home/periods?property_id=${propertyEntry.id}`)
+    for (const homeAnio of homeData.anios) {
+      const yearData = await request(`/home/periods?property_id=${propertyEntry.id}&anio=${homeAnio}`)
+      for (const period of yearData.periods) {
+        await del(`/home/periods/${period.id}`)
+      }
+    }
+    await del(`/home/properties/${propertyEntry.id}`)
+  }
+
   const knowledge = await request('/knowledge/items')
   for (const item of knowledge.items.filter((entry) => String(entry.titulo).startsWith('Smoke '))) {
     await del(`/knowledge/items/${item.id}`)
@@ -710,6 +722,108 @@ async function run() {
   }
   await del(`/family/${familyMember.id}/file`)
 
+  const homeProperty = await post('/home/properties', {
+    nombre: `Smoke casa ${Date.now()}`,
+    notas: 'Propiedad ficticia y temporal',
+  })
+  if (!homeProperty.id) throw new Error('No se creo propiedad smoke')
+
+  const homePeriod = await post('/home/periods', {
+    property_id: homeProperty.id,
+    anio: smokeYear,
+    mes: 1,
+    fecha_emision: `${smokeYear}-01-01`,
+    numero_cuenta: 'SMOKE-1',
+    fecha_limite_descuento: `${smokeYear}-01-10`,
+    fecha_vencimiento: `${smokeYear}-01-31`,
+    descuento_valor: 5000,
+    total_con_descuento: 95000,
+    items: [
+      { concepto: 'Administracion smoke', saldo_anterior: 0, cuota_mes: 90000, nuevo_saldo: 90000 },
+      { concepto: 'Parqueadero smoke', saldo_anterior: 0, cuota_mes: 10000, nuevo_saldo: 10000 },
+    ],
+  })
+  if (homePeriod.total_nuevo_saldo !== 100000 || homePeriod.items.length !== 2) {
+    throw new Error('Totales backend de la mensualidad smoke no cuadran')
+  }
+  if (homePeriod.estado !== 'pendiente') throw new Error(`Mensualidad smoke debia nacer pendiente, llego ${homePeriod.estado}`)
+
+  const duplicateHomePeriod = await expectFailure('/home/periods', {
+    method: 'POST',
+    body: JSON.stringify({
+      property_id: homeProperty.id,
+      anio: smokeYear,
+      mes: 1,
+      items: [{ concepto: 'Duplicado smoke', saldo_anterior: 0, cuota_mes: 1, nuevo_saldo: 1 }],
+    }),
+  })
+  if (!String(duplicateHomePeriod.error ?? '').includes('Ya existe')) throw new Error('Duplicado de mensualidad no devolvio 409 esperado')
+
+  const invalidHomeDate = await expectFailure('/home/periods', {
+    method: 'POST',
+    body: JSON.stringify({
+      property_id: homeProperty.id,
+      anio: smokeYear,
+      mes: 2,
+      fecha_emision: `${smokeYear}-02-30`,
+      items: [{ concepto: 'Fecha smoke', saldo_anterior: 0, cuota_mes: 1, nuevo_saldo: 1 }],
+    }),
+  })
+  if (!String(invalidHomeDate.error ?? '').toLowerCase().includes('fecha')) throw new Error('Mensualidad no rechazo fecha imposible')
+
+  const paidWithDiscount = await put(`/home/periods/${homePeriod.id}/payment`, {
+    fecha_pago: `${smokeYear}-01-05`,
+    valor_pagado: 95000,
+  })
+  if (paidWithDiscount.estado !== 'pagado_con_descuento' || paidWithDiscount.descuento_ganado !== 5000) {
+    throw new Error(`Pago con descuento smoke fallo: ${paidWithDiscount.estado}/${paidWithDiscount.descuento_ganado}`)
+  }
+
+  const paidWithLateFee = await put(`/home/periods/${homePeriod.id}/payment`, {
+    fecha_pago: `${smokeYear}-02-05`,
+    valor_pagado: 102000,
+    mora_cobrada: 2000,
+  })
+  if (paidWithLateFee.estado !== 'en_mora') throw new Error('Pago con mora smoke no quedo en_mora')
+
+  const homeList = await request(`/home/periods?property_id=${homeProperty.id}&anio=${smokeYear}`)
+  if (homeList.resumen.total_pagado !== 102000 || homeList.resumen.total_moras !== 2000 || homeList.resumen.en_mora !== 1) {
+    throw new Error(`Resumen Casa smoke no cuadra: ${JSON.stringify(homeList.resumen)}`)
+  }
+  const homeFiltered = await request(`/home/periods?property_id=${homeProperty.id}&anio=${smokeYear}&estado=en_mora`)
+  if (homeFiltered.periods.length !== 1) throw new Error('Filtro por estado en Casa no devolvio la mensualidad esperada')
+
+  const homePdfBytes = new Uint8Array([37, 80, 68, 70, 45, 49, 46, 52, 10, 37, 83, 77, 79, 75, 69, 10])
+  const homeUploadResponse = await fetch(`${baseUrl}/home/periods/${homePeriod.id}/file`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/pdf',
+      'x-file-name': encodeURIComponent('smoke-casa.pdf'),
+    },
+    body: homePdfBytes,
+  })
+  const homeUploadJson = await homeUploadResponse.json()
+  if (!homeUploadResponse.ok || homeUploadJson.data.file_name !== 'smoke-casa.pdf') {
+    throw new Error(`Upload PDF casa fallo: ${JSON.stringify(homeUploadJson)}`)
+  }
+  const homeDownloadResponse = await fetch(`${baseUrl}/home/periods/${homePeriod.id}/file`)
+  const homeDownloaded = await homeDownloadResponse.arrayBuffer()
+  if (
+    !homeDownloadResponse.ok
+    || homeDownloaded.byteLength !== homePdfBytes.byteLength
+    || !String(homeDownloadResponse.headers.get('content-disposition')).startsWith('inline')
+    || !String(homeDownloadResponse.headers.get('cache-control')).includes('no-store')
+  ) {
+    throw new Error('Vista PDF casa no hizo roundtrip binario inline con no-store')
+  }
+  await del(`/home/periods/${homePeriod.id}/file`)
+
+  const clearedPayment = await del(`/home/periods/${homePeriod.id}/payment`)
+  if (clearedPayment.estado !== 'pendiente') throw new Error('Quitar pago smoke no devolvio la mensualidad a pendiente')
+
+  const blockedProperty = await expectFailure(`/home/properties/${homeProperty.id}`, { method: 'DELETE' })
+  if (!String(blockedProperty.error ?? '').includes('historial')) throw new Error('Propiedad con historial no bloqueo el borrado')
+
   const vehicle = await post('/vehicles', {
     nombre: `Smoke vehiculo ${Date.now()}`,
     tipo: 'carro',
@@ -985,7 +1099,7 @@ async function run() {
 
   await cleanupSmokeData(platform.id)
 
-  console.log('Endpoints OK: platforms, categories, cards, snapshots, movements, subscriptions/apply, summary, close-month, goals, music, knowledge, habits, loans, salud, events, vehicles, family, notifications')
+  console.log('Endpoints OK: platforms, categories, cards, snapshots, movements, subscriptions/apply, summary, close-month, goals, music, knowledge, habits, loans, salud, events, vehicles, family, home, notifications')
 }
 
 run().catch((error) => {
