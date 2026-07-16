@@ -848,6 +848,24 @@ async function run() {
     })}`)
   }
 
+  const partialDiscountPeriod = await put(`/home/periods/${homePeriod.id}`, {
+    items: [
+      { concepto: 'Administracion smoke', saldo_anterior: 0, cuota_mes: 90000, nuevo_saldo: 90000, aplica_descuento: true },
+      { concepto: 'Parqueadero smoke', saldo_anterior: 0, cuota_mes: 10000, nuevo_saldo: 10000, aplica_descuento: false },
+    ],
+  })
+  if (partialDiscountPeriod.descuento_valor_calculado !== 9000 || partialDiscountPeriod.total_con_descuento_calculado !== 91000) {
+    throw new Error(`Descuento parcial por concepto no cuadra: ${JSON.stringify({
+      valor: partialDiscountPeriod.descuento_valor_calculado,
+      total: partialDiscountPeriod.total_con_descuento_calculado,
+    })}`)
+  }
+  const templateAfterFlags = await request(`/home/periods/template?property_id=${homeProperty.id}`)
+  const templateFlagged = templateAfterFlags?.items?.find((entry) => entry.concepto === 'Parqueadero smoke')
+  if (!templateFlagged || templateFlagged.aplica_descuento !== 0) {
+    throw new Error('La plantilla no arrastro el flag aplica_descuento por concepto')
+  }
+
   const blockedProperty = await expectFailure(`/home/properties/${homeProperty.id}`, { method: 'DELETE' })
   if (!String(blockedProperty.error ?? '').includes('historial')) throw new Error('Propiedad con historial no bloqueo el borrado')
 

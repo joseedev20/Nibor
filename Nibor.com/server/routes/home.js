@@ -164,7 +164,8 @@ function normalizeItems(rawItems) {
     if (![saldo_anterior, cuota_mes, nuevo_saldo].every(Number.isFinite)) {
       return { error: `Los valores del concepto "${concepto}" deben ser números válidos` }
     }
-    items.push({ concepto, saldo_anterior, cuota_mes, nuevo_saldo })
+    const aplica_descuento = raw.aplica_descuento === undefined ? 1 : (raw.aplica_descuento ? 1 : 0)
+    items.push({ concepto, saldo_anterior, cuota_mes, nuevo_saldo, aplica_descuento })
   }
   return { items }
 }
@@ -210,7 +211,13 @@ function enrichPeriod(period, items, today = todayIso()) {
     totalConDescuento = round2(total_nuevo_saldo - descuentoValor)
   }
   if (descuentoValor === null && totalConDescuento === null && pct > 0) {
-    descuentoValor = round2(total_nuevo_saldo * pct / 100)
+    // El % solo aplica a la cuota del mes de los conceptos marcados con
+    // aplica_descuento (ej. Administración sí, Parqueadero/Retroactivo no).
+    const discountBase = items.reduce(
+      (sum, item) => (Number(item.aplica_descuento ?? 1) ? sum + Number(item.cuota_mes ?? 0) : sum),
+      0,
+    )
+    descuentoValor = round2(discountBase * pct / 100)
     totalConDescuento = round2(total_nuevo_saldo - descuentoValor)
   }
 
@@ -234,7 +241,7 @@ async function getEnrichedPeriod(db, id) {
   if (!period) return null
   const items = await all(
     db,
-    'SELECT id, concepto, saldo_anterior, cuota_mes, nuevo_saldo, orden FROM home_administration_items WHERE period_id = ? ORDER BY orden, id',
+    'SELECT id, concepto, saldo_anterior, cuota_mes, nuevo_saldo, aplica_descuento, orden FROM home_administration_items WHERE period_id = ? ORDER BY orden, id',
     id,
   )
   return enrichPeriod(period, items)
@@ -242,8 +249,8 @@ async function getEnrichedPeriod(db, id) {
 
 async function insertItems(db, periodId, items) {
   const statements = items.map((item, index) => db
-    .prepare('INSERT INTO home_administration_items (period_id, concepto, saldo_anterior, cuota_mes, nuevo_saldo, orden) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(periodId, item.concepto, item.saldo_anterior, item.cuota_mes, item.nuevo_saldo, index))
+    .prepare('INSERT INTO home_administration_items (period_id, concepto, saldo_anterior, cuota_mes, nuevo_saldo, aplica_descuento, orden) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .bind(periodId, item.concepto, item.saldo_anterior, item.cuota_mes, item.nuevo_saldo, item.aplica_descuento ?? 1, index))
   await db.batch(statements)
 }
 
@@ -268,7 +275,7 @@ home.get('/periods/template', async (c) => {
 
   const items = await all(
     db,
-    'SELECT concepto, saldo_anterior, cuota_mes, nuevo_saldo FROM home_administration_items WHERE period_id = ? ORDER BY orden, id',
+    'SELECT concepto, saldo_anterior, cuota_mes, nuevo_saldo, aplica_descuento FROM home_administration_items WHERE period_id = ? ORDER BY orden, id',
     latest.id,
   )
   const pagado = latest.fecha_pago !== null && latest.valor_pagado !== null
@@ -298,6 +305,7 @@ home.get('/periods/template', async (c) => {
         saldo_anterior: saldoAnterior,
         cuota_mes: cuotaMes,
         nuevo_saldo: Math.round((saldoAnterior + cuotaMes) * 100) / 100,
+        aplica_descuento: item.aplica_descuento ?? 1,
       }
     }),
   })
@@ -337,7 +345,7 @@ home.get('/periods', async (c) => {
   const itemRows = rows.length
     ? await all(
       db,
-      `SELECT id, period_id, concepto, saldo_anterior, cuota_mes, nuevo_saldo, orden
+      `SELECT id, period_id, concepto, saldo_anterior, cuota_mes, nuevo_saldo, aplica_descuento, orden
        FROM home_administration_items
        WHERE period_id IN (SELECT id FROM home_administration_periods WHERE property_id = ? AND anio = ?)
        ORDER BY orden, id`,

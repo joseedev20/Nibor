@@ -192,8 +192,11 @@ family_members   (id, nombre, parentesco, tipo_documento, numero_documento, nota
 home_properties  (id, nombre, notas, activa, created_at, updated_at)
 home_administration_periods (id, property_id, anio, mes, fecha_emision, numero_cuenta, fecha_limite_descuento, fecha_vencimiento, descuento_pct, descuento_valor, total_con_descuento, fecha_pago, valor_pagado, mora_cobrada, notas, file_key, file_name, file_size, created_at, updated_at)
                  -- UNIQUE(property_id, anio, mes); un solo PDF por mes (cuenta + comprobante unidos) en R2
-home_administration_items (id, period_id, concepto, saldo_anterior, cuota_mes, nuevo_saldo, orden)
+home_administration_items (id, period_id, concepto, saldo_anterior, cuota_mes, nuevo_saldo, aplica_descuento, orden)
                  -- agregado en migración 0024 para Nibor Casa; totales y estado se calculan SOLO en backend
+                 -- aplica_descuento agregado en migración 0025: el % de descuento del periodo
+                 -- solo se deriva de la cuota del mes de los conceptos marcados (ej. Administración
+                 -- y Retroactivo sí, Parqueadero no); valor/total digitados manualmente siempre mandan
 ```
 
 **Fórmulas (calculadas en el backend, una sola fuente de verdad):**

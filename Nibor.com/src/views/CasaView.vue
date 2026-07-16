@@ -134,7 +134,7 @@ async function saveProperty() {
 // ── Mensualidad (cuenta de cobro) ────────────────────────────────────────────
 
 function emptyItem(concepto = '') {
-  return { concepto, saldo_anterior: '', cuota_mes: '', nuevo_saldo: '' }
+  return { concepto, saldo_anterior: '', cuota_mes: '', nuevo_saldo: '', aplica_descuento: true }
 }
 
 function resetForm(period = null) {
@@ -155,6 +155,7 @@ function resetForm(period = null) {
       saldo_anterior: item.saldo_anterior,
       cuota_mes: item.cuota_mes,
       nuevo_saldo: item.nuevo_saldo,
+      aplica_descuento: item.aplica_descuento !== 0 && item.aplica_descuento !== false,
     }))
     : [emptyItem('Administración')]
   editorError.value = ''
@@ -171,7 +172,10 @@ async function openEditor(period = null) {
     if (template && editorOpen.value && !form.id) {
       form.anio = template.anio
       form.mes = template.mes
-      form.items = template.items.map((item) => ({ ...item }))
+      form.items = template.items.map((item) => ({
+        ...item,
+        aplica_descuento: item.aplica_descuento !== 0 && item.aplica_descuento !== false,
+      }))
       form.descuento_pct = template.descuento_pct ?? ''
       form.descuento_valor = template.descuento_valor ?? ''
       form.fecha_limite_descuento = template.fecha_limite_descuento ?? ''
@@ -473,7 +477,10 @@ onMounted(loadPeriods)
                 </thead>
                 <tbody>
                   <tr v-for="item in period.items" :key="item.id" class="border-t border-zinc-100 dark:border-zinc-800">
-                    <td class="py-1.5 pr-3 text-zinc-700 dark:text-zinc-300">{{ item.concepto }}</td>
+                    <td class="py-1.5 pr-3 text-zinc-700 dark:text-zinc-300">
+                      {{ item.concepto }}
+                      <span v-if="Number(period.descuento_pct) > 0 && !item.aplica_descuento" class="ml-1 rounded bg-zinc-100 px-1 py-0.5 text-[10px] font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">sin dcto.</span>
+                    </td>
                     <td class="py-1.5 pr-3 text-right tabular-nums text-zinc-600 dark:text-zinc-400">{{ formatCOP(item.saldo_anterior) }}</td>
                     <td class="py-1.5 pr-3 text-right tabular-nums text-zinc-600 dark:text-zinc-400">{{ formatCOP(item.cuota_mes) }}</td>
                     <td class="py-1.5 text-right tabular-nums font-medium text-zinc-900 dark:text-zinc-100">{{ formatCOP(item.nuevo_saldo) }}</td>
@@ -596,10 +603,10 @@ onMounted(loadPeriods)
           <fieldset class="rounded-lg border border-zinc-200 p-4 dark:border-zinc-700">
             <legend class="px-1 text-sm font-semibold text-zinc-700 dark:text-zinc-300">Conceptos de la cuenta</legend>
             <div class="grid gap-2">
-              <div class="hidden gap-2 text-xs font-medium uppercase tracking-wide text-zinc-400 sm:grid sm:grid-cols-[1fr_7rem_7rem_7rem_2rem]">
-                <span>Concepto</span><span class="text-right">Saldo anterior</span><span class="text-right">Cuota del mes</span><span class="text-right">Nuevo saldo</span><span />
+              <div class="hidden gap-2 text-xs font-medium uppercase tracking-wide text-zinc-400 sm:grid sm:grid-cols-[1fr_6.5rem_6.5rem_6.5rem_3rem_2rem]">
+                <span>Concepto</span><span class="text-right">Saldo anterior</span><span class="text-right">Cuota del mes</span><span class="text-right">Nuevo saldo</span><span class="text-center" title="El % de descuento aplica a este concepto">Dcto.</span><span />
               </div>
-              <div v-for="(item, index) in form.items" :key="index" class="grid gap-2 rounded-lg border border-zinc-100 p-2 dark:border-zinc-800 sm:grid-cols-[1fr_7rem_7rem_7rem_2rem] sm:border-0 sm:p-0">
+              <div v-for="(item, index) in form.items" :key="index" class="grid gap-2 rounded-lg border border-zinc-100 p-2 dark:border-zinc-800 sm:grid-cols-[1fr_6.5rem_6.5rem_6.5rem_3rem_2rem] sm:border-0 sm:p-0">
                 <input v-model="item.concepto" required maxlength="80" type="text" placeholder="Administración, Parqueadero…" class="h-9 rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
                 <label class="grid gap-0.5">
                   <span class="text-[11px] font-medium uppercase tracking-wide text-zinc-400 sm:hidden">Saldo anterior</span>
@@ -612,6 +619,10 @@ onMounted(loadPeriods)
                 <label class="grid gap-0.5">
                   <span class="text-[11px] font-medium uppercase tracking-wide text-zinc-400 sm:hidden">Nuevo saldo <span class="normal-case">(se calcula solo)</span></span>
                   <input v-model.number="item.nuevo_saldo" type="number" step="0.01" placeholder="0" class="h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 text-right text-sm tabular-nums text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
+                </label>
+                <label class="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300 sm:h-9 sm:justify-center" title="El % de descuento aplica a este concepto">
+                  <input v-model="item.aplica_descuento" type="checkbox" class="h-4 w-4 accent-emerald-600">
+                  <span class="sm:hidden">Le aplica el descuento %</span>
                 </label>
                 <button type="button" class="h-9 rounded-lg text-sm font-bold text-rose-500 hover:bg-rose-50 disabled:opacity-40 dark:hover:bg-rose-950" :disabled="form.items.length === 1" aria-label="Quitar concepto" @click="removeItem(index)">×</button>
               </div>
