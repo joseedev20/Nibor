@@ -37,6 +37,8 @@ function normalizeMember(body, current = {}) {
     numero_documento: body.numero_documento === undefined
       ? current.numero_documento
       : cleanText(body.numero_documento),
+    telefono: body.telefono === undefined ? current.telefono ?? null : cleanNullableText(body.telefono),
+    direccion: body.direccion === undefined ? current.direccion ?? null : cleanNullableText(body.direccion),
     notas: body.notas === undefined ? current.notas ?? null : cleanNullableText(body.notas),
   }
 }
@@ -50,6 +52,11 @@ function validateMember(member) {
   if (!member.numero_documento) return 'El número de documento es obligatorio'
   if (member.numero_documento.length > 40) return 'El número de documento no puede superar 40 caracteres'
   if (!/^[\p{L}\p{N}.\-\s]+$/u.test(member.numero_documento)) return 'El número de documento contiene caracteres no permitidos'
+  if (member.telefono) {
+    if (member.telefono.length > 30) return 'El teléfono no puede superar 30 caracteres'
+    if (!/^[\d+\-\s().#]+$/.test(member.telefono)) return 'El teléfono contiene caracteres no permitidos'
+  }
+  if (member.direccion && member.direccion.length > 200) return 'La dirección no puede superar 200 caracteres'
   if (member.notas && member.notas.length > 800) return 'Las notas no pueden superar 800 caracteres'
   return null
 }
@@ -57,7 +64,7 @@ function validateMember(member) {
 function getMember(db, id) {
   return first(
     db,
-    `SELECT id, nombre, parentesco, tipo_documento, numero_documento, notas,
+    `SELECT id, nombre, parentesco, tipo_documento, numero_documento, telefono, direccion, notas,
             file_name, file_size, created_at, updated_at
      FROM family_members WHERE id = ?`,
     id,
@@ -67,7 +74,7 @@ function getMember(db, id) {
 family.get('/', async (c) => {
   const rows = await all(
     c.env.DB,
-    `SELECT id, nombre, parentesco, tipo_documento, numero_documento, notas,
+    `SELECT id, nombre, parentesco, tipo_documento, numero_documento, telefono, direccion, notas,
             file_name, file_size, created_at, updated_at
      FROM family_members
      ORDER BY parentesco COLLATE NOCASE, nombre COLLATE NOCASE`,
@@ -84,12 +91,14 @@ family.post('/', async (c) => {
 
   const meta = await run(
     c.env.DB,
-    `INSERT INTO family_members (nombre, parentesco, tipo_documento, numero_documento, notas)
-     VALUES (?, ?, ?, ?, ?)`,
+    `INSERT INTO family_members (nombre, parentesco, tipo_documento, numero_documento, telefono, direccion, notas)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
     member.nombre,
     member.parentesco,
     member.tipo_documento,
     member.numero_documento,
+    member.telefono,
+    member.direccion,
     member.notas,
   )
   return ok(c, await getMember(c.env.DB, meta.last_row_id), 201)
@@ -109,12 +118,14 @@ family.put('/:id', async (c) => {
   await run(
     c.env.DB,
     `UPDATE family_members
-     SET nombre = ?, parentesco = ?, tipo_documento = ?, numero_documento = ?, notas = ?, updated_at = datetime('now')
+     SET nombre = ?, parentesco = ?, tipo_documento = ?, numero_documento = ?, telefono = ?, direccion = ?, notas = ?, updated_at = datetime('now')
      WHERE id = ?`,
     member.nombre,
     member.parentesco,
     member.tipo_documento,
     member.numero_documento,
+    member.telefono,
+    member.direccion,
     member.notas,
     id,
   )

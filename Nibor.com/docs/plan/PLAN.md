@@ -186,8 +186,9 @@ driver_license_categories (id, license_id, categoria, vence, notas, created_at, 
                  -- agregado en migración 0023; un PDF de licencia y vencimiento independiente por categoría
 notifications    (id, tipo, titulo, mensaje, fecha, dedupe_key, leida, push_enviada, prioridad, sonido, created_at)
 notification_settings (clave, valor, updated_at)
-family_members   (id, nombre, parentesco, tipo_documento, numero_documento, notas, file_key, file_name, file_size, created_at, updated_at)
+family_members   (id, nombre, parentesco, tipo_documento, numero_documento, telefono, direccion, notas, file_key, file_name, file_size, created_at, updated_at)
                  -- agregado en migración 0022; datos sensibles en D1 y PDF privado en R2, nunca en seeds/migraciones
+                 -- telefono/direccion opcionales agregados en migración 0026
                  -- agregado en migración 0018 y ampliado en 0019/0020/0021; settings incluye push/prioridad/sonido por regla, silencio, pausa, resumen diario, franjas de hábitos por días y programación de vehículos
 home_properties  (id, nombre, notas, activa, created_at, updated_at)
 home_administration_periods (id, property_id, anio, mes, fecha_emision, numero_cuenta, fecha_limite_descuento, fecha_vencimiento, descuento_pct, descuento_valor, total_con_descuento, fecha_pago, valor_pagado, mora_cobrada, notas, file_key, file_name, file_size, created_at, updated_at)

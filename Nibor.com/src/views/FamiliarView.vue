@@ -27,6 +27,8 @@ const form = reactive({
   parentesco: '',
   tipo_documento: 'cedula_ciudadania',
   numero_documento: '',
+  telefono: '',
+  direccion: '',
   notas: '',
 })
 
@@ -61,6 +63,8 @@ function resetForm(member = null) {
   form.parentesco = member?.parentesco ?? ''
   form.tipo_documento = member?.tipo_documento ?? 'cedula_ciudadania'
   form.numero_documento = member?.numero_documento ?? ''
+  form.telefono = member?.telefono ?? ''
+  form.direccion = member?.direccion ?? ''
   form.notas = member?.notas ?? ''
   editorError.value = ''
 }
@@ -87,6 +91,8 @@ async function saveMember() {
         parentesco: form.parentesco,
         tipo_documento: form.tipo_documento,
         numero_documento: form.numero_documento,
+        telefono: form.telefono,
+        direccion: form.direccion,
         notas: form.notas,
       }),
     })
@@ -259,6 +265,16 @@ onBeforeUnmount(() => window.clearTimeout(copyFeedbackTimer))
               <span>{{ copiedMemberId === member.id ? 'Copiado' : 'Copiar' }}</span>
             </button>
           </div>
+          <div v-if="member.telefono || member.direccion" class="mt-3 grid gap-1.5 text-sm">
+            <a v-if="member.telefono" :href="`tel:${member.telefono.replace(/[^\d+]/g, '')}`" class="flex items-center gap-2 text-zinc-700 hover:text-emerald-700 dark:text-zinc-300 dark:hover:text-emerald-400">
+              <span aria-hidden="true">📞</span>
+              <span class="font-medium">{{ member.telefono }}</span>
+            </a>
+            <p v-if="member.direccion" class="flex items-start gap-2 text-zinc-500 dark:text-zinc-400">
+              <span aria-hidden="true">📍</span>
+              <span>{{ member.direccion }}</span>
+            </p>
+          </div>
           <p v-if="member.notas" class="mt-3 whitespace-pre-line text-sm text-zinc-500 dark:text-zinc-400">{{ member.notas }}</p>
         </div>
 
@@ -313,6 +329,16 @@ onBeforeUnmount(() => window.clearTimeout(copyFeedbackTimer))
             <label class="grid gap-1 text-sm">
               <span class="font-medium text-zinc-700 dark:text-zinc-300">Número de documento</span>
               <input v-model="form.numero_documento" required maxlength="40" type="text" autocomplete="off" class="h-10 rounded-lg border border-zinc-200 bg-white px-3 font-mono text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
+            </label>
+          </div>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <label class="grid gap-1 text-sm">
+              <span class="font-medium text-zinc-700 dark:text-zinc-300">Teléfono <span class="font-normal text-zinc-400">(opcional)</span></span>
+              <input v-model="form.telefono" maxlength="30" type="tel" placeholder="300 000 0000" autocomplete="off" class="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
+            </label>
+            <label class="grid gap-1 text-sm">
+              <span class="font-medium text-zinc-700 dark:text-zinc-300">Dirección <span class="font-normal text-zinc-400">(opcional)</span></span>
+              <input v-model="form.direccion" maxlength="200" type="text" placeholder="Calle, ciudad…" autocomplete="off" class="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
             </label>
           </div>
           <label class="grid gap-1 text-sm">

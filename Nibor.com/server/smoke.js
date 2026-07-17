@@ -682,9 +682,20 @@ async function run() {
     parentesco: 'Prueba',
     tipo_documento: 'cedula_ciudadania',
     numero_documento: 'SMOKE-0001',
+    telefono: '+57 300 000 0000',
+    direccion: 'Direccion ficticia smoke 123',
     notas: 'Registro ficticio y temporal',
   })
   if (!familyMember.id || familyMember.parentesco !== 'Prueba') throw new Error('No se creo familiar smoke')
+  if (familyMember.telefono !== '+57 300 000 0000' || familyMember.direccion !== 'Direccion ficticia smoke 123') {
+    throw new Error('Familiar smoke no guardo telefono/direccion')
+  }
+
+  const invalidFamilyPhone = await expectFailure(`/family/${familyMember.id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ telefono: 'abc-no-es-telefono' }),
+  })
+  if (!String(invalidFamilyPhone.error ?? '').includes('teléfono')) throw new Error('Familiar no rechazo telefono invalido')
 
   const editedFamilyMember = await put(`/family/${familyMember.id}`, {
     parentesco: 'Prueba editada',
