@@ -119,6 +119,11 @@ async function cleanupSmokeData(platformId) {
     await del(`/vehicles/${vehicle.id}`)
   }
 
+  const petsList = await request('/pets')
+  for (const petEntry of petsList.filter((item) => String(item.nombre).startsWith('Smoke '))) {
+    await del(`/pets/${petEntry.id}`)
+  }
+
   const goals = await request('/goals')
   for (const goal of goals.goals.filter((item) => String(item.nombre).startsWith('Smoke '))) {
     await del(`/goals/${goal.id}`)
@@ -880,6 +885,53 @@ async function run() {
   const blockedProperty = await expectFailure(`/home/properties/${homeProperty.id}`, { method: 'DELETE' })
   if (!String(blockedProperty.error ?? '').includes('historial')) throw new Error('Propiedad con historial no bloqueo el borrado')
 
+  const smokePet = await post('/pets', {
+    nombre: `Smoke mascota ${Date.now()}`,
+    especie: 'perro',
+    fecha_nacimiento: '2020-01-15',
+  })
+  if (!smokePet.id) throw new Error('No se creo mascota smoke')
+
+  const smokeVaccine = await post(`/pets/${smokePet.id}/vaccines`, {
+    nombre: 'Smoke rabia',
+    fecha: '2024-01-01',
+    proxima_dosis: '2024-06-01',
+  })
+  if (smokeVaccine.estado !== 'vencida') throw new Error(`Vacuna smoke debia estar vencida, llego ${smokeVaccine.estado}`)
+
+  const invalidVaccine = await expectFailure(`/pets/${smokePet.id}/vaccines`, {
+    method: 'POST',
+    body: JSON.stringify({ nombre: 'Smoke invalida', fecha: `${smokeYear}-02-30` }),
+  })
+  if (!String(invalidVaccine.error ?? '').toLowerCase().includes('fecha')) throw new Error('Vacuna no rechazo fecha imposible')
+
+  const petGasto = await post(`/pets/${smokePet.id}/gastos`, {
+    concepto: 'Comida smoke',
+    fecha: `${smokeYear}-01-05`,
+    monto: 50000,
+  })
+  if (!petGasto.id || !String(petGasto.descripcion).includes(smokePet.nombre)) throw new Error('Gasto de mascota no creo movimiento')
+
+  const categoriesForPets = await request('/categories')
+  const mascotasCategory = categoriesForPets.find((item) => item.nombre === 'Mascotas' && item.tipo === 'gasto')
+  if (!mascotasCategory) throw new Error('No existe la categoria seed Mascotas')
+  await post('/movements', {
+    fecha: `${smokeYear}-01-06`,
+    tipo: 'gasto',
+    categoria_id: mascotasCategory.id,
+    descripcion: 'Smoke gasto desde Gastos',
+    monto: 20000,
+  })
+
+  const petDetail = await request(`/pets/${smokePet.id}`)
+  if (petDetail.gastos.length !== 2 || petDetail.gastos_resumen.total !== 70000) {
+    throw new Error(`Sincronizacion de gastos de mascota no cuadra: ${JSON.stringify(petDetail.gastos_resumen)}`)
+  }
+  if (petDetail.pet.edad === null) throw new Error('La edad de la mascota no se calculo en backend')
+
+  const blockedPet = await expectFailure(`/pets/${smokePet.id}`, { method: 'DELETE' })
+  if (!String(blockedPet.error ?? '').includes('gastos')) throw new Error('Mascota con gastos no bloqueo el borrado')
+
   const vehicle = await post('/vehicles', {
     nombre: `Smoke vehiculo ${Date.now()}`,
     tipo: 'carro',
@@ -1155,7 +1207,7 @@ async function run() {
 
   await cleanupSmokeData(platform.id)
 
-  console.log('Endpoints OK: platforms, categories, cards, snapshots, movements, subscriptions/apply, summary, close-month, goals, music, knowledge, habits, loans, salud, events, vehicles, family, home, notifications')
+  console.log('Endpoints OK: platforms, categories, cards, snapshots, movements, subscriptions/apply, summary, close-month, goals, music, knowledge, habits, loans, salud, events, vehicles, family, home, pets, notifications')
 }
 
 run().catch((error) => {

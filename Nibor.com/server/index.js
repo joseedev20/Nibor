@@ -14,6 +14,7 @@ import loans from './routes/loans.js'
 import movements from './routes/movements.js'
 import music from './routes/music.js'
 import notifications, { runChecks } from './routes/notifications.js'
+import pets from './routes/pets.js'
 import platforms from './routes/platforms.js'
 import snapshots from './routes/snapshots.js'
 import subscriptions from './routes/subscriptions.js'
@@ -44,6 +45,7 @@ app.route('/loans', loans)
 app.route('/vehicles', vehicles)
 app.route('/music', music)
 app.route('/notifications', notifications)
+app.route('/pets', pets)
 app.route('/summary', summary)
 app.route('/close-month', closeMonth)
 

@@ -10,7 +10,7 @@ Nibor.com/
 ├── server/             # Cloudflare Worker API
 │   ├── index.js        # Worker/Hono, monta /api/*
 │   ├── db.js           # helpers pequeños para consultas D1 y mapeo de errores
-│   └── routes/         # un archivo por recurso: platforms.js, snapshots.js, movements.js, subscriptions.js, goals.js, music.js, knowledge.js, habits.js, events.js, vehicles.js, notifications.js, salud.js, family.js, home.js, summary.js
+│   └── routes/         # un archivo por recurso: platforms.js, snapshots.js, movements.js, subscriptions.js, goals.js, music.js, knowledge.js, habits.js, events.js, vehicles.js, notifications.js, salud.js, family.js, home.js, pets.js, summary.js
 ├── migrations/         # migraciones D1. 0001_initial.sql crea esquema y seed inicial
 ├── src/                # frontend Vue 3
 │   ├── main.js
@@ -48,6 +48,7 @@ Nibor.com/
 - En Salud, el IMC y su categoría se calculan SOLO en el backend y se devuelven en `/api/salud`; el frontend solo los presenta.
 - En Hábitos, progreso, rachas, heatmap, conteos del día e integraciones se calculan SOLO en el backend y se devuelven en `/api/habits`; el frontend solo los presenta.
 - En Vehículos, estado de documentos y días restantes se calculan SOLO en el backend; PDFs se guardan en R2 (`FILES`) y la UI nunca guarda archivos en D1. La Tarjeta de propiedad usa `requiere_vencimiento = 0`; la licencia personal vive en `driver_licenses` y sus categorías/vencimientos en `driver_license_categories`, expuestas bajo `/api/vehicles/license/*`.
+- En Bansky (`/api/pets`), edad, estado de vacunas y resumen de gastos se calculan SOLO en el backend. Los gastos de mascota son movements normales: cuentan los que tienen `pet_id` y los registrados en Gastos con la categoría `Mascotas`; nunca duplicar un gasto en tablas propias del módulo.
 - En Casa (`/api/home`), totales de conceptos, estado del periodo (`pendiente`/`pagado_con_descuento`/`pagado_sin_descuento`/`en_mora`) y resumen anual se calculan SOLO en el backend. La mora de un mes sin pagar solo se infiere por `fecha_vencimiento` o por mora efectivamente cobrada, nunca por la fecha límite de descuento. Un solo PDF por mensualidad en R2.
 - En Notificaciones, las reglas, deduplicación, prioridad/sonido por regla, franjas múltiples de hábitos por días, avisos programados de vehículos, silencio, pausa y envío Pushover se ejecutan SOLO en backend/cron; el frontend solo invoca `/run`, muestra la bandeja y administra settings por módulo. `fecha` en `/api/notifications` y `/api/notifications/run` queda reservado para smoke/diagnostico, no para UI normal.
 - Producción debe estar protegida por Cloudflare Access para el dominio completo y `/api/*`; nunca agregar un bypass sin una autenticación alternativa revisada.
