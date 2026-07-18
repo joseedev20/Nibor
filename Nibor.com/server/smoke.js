@@ -955,6 +955,14 @@ async function run() {
   })
   if (!String(invalidReminder.error ?? '').includes('frecuencia')) throw new Error('Recordatorio no rechazo frecuencia invalida')
 
+  const customRepeatReminder = await put(`/reminders/${recurringReminder.id}`, { repetir_horas: 1 })
+  if (customRepeatReminder.repetir_horas !== 1) throw new Error('Recordatorio no guardo repetir_horas propio')
+  const invalidRepeat = await expectFailure(`/reminders/${recurringReminder.id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ repetir_horas: 30 }),
+  })
+  if (!String(invalidRepeat.error ?? '').includes('repetición')) throw new Error('Recordatorio no rechazo repetir_horas invalido')
+
   const onceReminder = await post('/reminders', {
     titulo: `Smoke pendiente ${notificationSmokeRunId}`,
     proxima_fecha: '2000-01-04',

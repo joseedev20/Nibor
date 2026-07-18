@@ -308,12 +308,11 @@ async function checkEventos(db, settings, hoy, diasAntes) {
 async function checkRecordatorios(db, settings, hoy, hora, minuto) {
   if (inQuietHours(settings, hora)) return 0
   const repetir = Number(settings.recordatorios_repetir_horas ?? 4)
-  const repetirHoras = Number.isInteger(repetir) && repetir >= 1 && repetir <= 24 ? repetir : 4
-  const slot = Math.floor(hora / repetirHoras) * repetirHoras
+  const repetirGlobal = Number.isInteger(repetir) && repetir >= 1 && repetir <= 24 ? repetir : 4
 
   const rows = await all(
     db,
-    `SELECT id, titulo, notas, frecuencia_dias, proxima_fecha, hora
+    `SELECT id, titulo, notas, frecuencia_dias, repetir_horas, proxima_fecha, hora
      FROM reminders
      WHERE activo = 1 AND completado_en IS NULL AND proxima_fecha <= ?`,
     hoy,
@@ -323,6 +322,10 @@ async function checkRecordatorios(db, settings, hoy, hora, minuto) {
   for (const reminder of rows) {
     const reminderMinutes = timeToMinutes(reminder.hora, null)
     if (reminderMinutes !== null && reminder.proxima_fecha === hoy && nowMinutes < reminderMinutes) continue
+    // Insistencia propia del recordatorio; si no tiene, usa el ajuste general
+    const propio = Number(reminder.repetir_horas)
+    const repetirHoras = Number.isInteger(propio) && propio >= 1 && propio <= 24 ? propio : repetirGlobal
+    const slot = Math.floor(hora / repetirHoras) * repetirHoras
     const atraso = Math.round(
       (new Date(`${hoy}T00:00:00Z`) - new Date(`${reminder.proxima_fecha}T00:00:00Z`)) / 86400000,
     )

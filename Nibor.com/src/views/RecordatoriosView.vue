@@ -39,9 +39,14 @@ const form = reactive({
   notas: '',
   frecuencia_dias: null,
   frecuencia_custom: '',
+  repetir_horas: '',
   proxima_fecha: '',
   hora: '',
 })
+
+const generalRepeatLabel = computed(() => (
+  REPETICIONES.find((option) => option.value === repeatHours.value)?.label ?? 'cada 4 horas'
+))
 
 const pendientes = computed(() => reminders.value.filter((item) => item.estado === 'hoy' || item.estado === 'vencido'))
 const proximos = computed(() => reminders.value.filter((item) => item.estado === 'programado'))
@@ -120,6 +125,11 @@ function subtitle(reminder) {
   }
   if (reminder.hora) parts.push(reminder.hora)
   parts.push(frecuenciaLabel(reminder))
+  if (reminder.repetir_horas) {
+    const label = REPETICIONES.find((option) => option.value === String(reminder.repetir_horas))?.label
+      ?? `cada ${reminder.repetir_horas} horas`
+    parts.push(`avisa ${label}`)
+  }
   return parts.join(' · ')
 }
 
@@ -131,6 +141,7 @@ function openEditor(reminder = null) {
   const isPreset = FRECUENCIAS.some((item) => item.value === frecuencia)
   form.frecuencia_dias = isPreset ? frecuencia : 'custom'
   form.frecuencia_custom = isPreset ? '' : String(frecuencia ?? '')
+  form.repetir_horas = reminder?.repetir_horas ? String(reminder.repetir_horas) : ''
   form.proxima_fecha = reminder?.proxima_fecha ?? new Date().toISOString().slice(0, 10)
   form.hora = reminder?.hora ?? ''
   editorError.value = ''
@@ -150,6 +161,7 @@ async function saveReminder() {
         titulo: form.titulo,
         notas: form.notas || null,
         frecuencia_dias: frecuencia,
+        repetir_horas: form.repetir_horas === '' ? null : Number(form.repetir_horas),
         proxima_fecha: form.proxima_fecha,
         hora: form.hora || null,
       }),
@@ -359,6 +371,15 @@ onBeforeUnmount(() => window.clearTimeout(repeatSavedTimer))
               <input v-model="form.hora" type="time" class="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
             </label>
           </div>
+
+          <label class="grid gap-1 text-sm">
+            <span class="font-medium text-zinc-700 dark:text-zinc-300">¿Con qué insistencia avisa?</span>
+            <select v-model="form.repetir_horas" class="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
+              <option value="">Usar el general ({{ generalRepeatLabel }})</option>
+              <option v-for="option in REPETICIONES" :key="option.value" :value="option.value">{{ option.label }}</option>
+            </select>
+            <p class="text-xs text-zinc-400">Mientras esté pendiente, este recordatorio te avisará con esta insistencia.</p>
+          </label>
 
           <label class="grid gap-1 text-sm">
             <span class="font-medium text-zinc-700 dark:text-zinc-300">Notas <span class="font-normal text-zinc-400">(opcional)</span></span>
