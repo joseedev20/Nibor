@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { all, fail, first, isUniqueError, isValidDate, ok, readJson, run, toInteger, toNullableNumber } from '../db.js'
+import { all, fail, first, isNonNegative, isUniqueError, isValidDate, ok, readJson, run, toInteger, toNullableNumber, toNumber } from '../db.js'
 
 // Nibor Casa: administración mensual de una propiedad.
 // Totales de conceptos y estado del periodo se calculan SOLO aquí.
@@ -8,6 +8,7 @@ import { all, fail, first, isUniqueError, isValidDate, ok, readJson, run, toInte
 const home = new Hono()
 const MAX_FILE_BYTES = 10 * 1024 * 1024
 const ESTADOS = new Set(['pendiente', 'pagado_con_descuento', 'pagado_sin_descuento', 'en_mora'])
+const ESTADOS_PROPIEDAD = new Set(['en_arriendo', 'propia', 'vendida'])
 
 home.use('*', async (c, next) => {
   await next()
@@ -33,6 +34,7 @@ function todayIso() {
 function normalizeProperty(body, current = {}) {
   return {
     nombre: body.nombre === undefined ? current.nombre : cleanText(body.nombre),
+    estado: body.estado === undefined ? current.estado ?? 'propia' : cleanText(body.estado),
     notas: body.notas === undefined ? current.notas ?? null : cleanNullableText(body.notas),
     activa: body.activa === undefined ? current.activa ?? 1 : (body.activa ? 1 : 0),
   }
@@ -41,6 +43,7 @@ function normalizeProperty(body, current = {}) {
 function validateProperty(property) {
   if (!property.nombre) return 'El nombre de la propiedad es obligatorio'
   if (property.nombre.length > 120) return 'El nombre no puede superar 120 caracteres'
+  if (!ESTADOS_PROPIEDAD.has(property.estado)) return 'El estado debe ser en_arriendo, propia o vendida'
   if (property.notas && property.notas.length > 800) return 'Las notas no pueden superar 800 caracteres'
   return null
 }
@@ -48,7 +51,7 @@ function validateProperty(property) {
 home.get('/properties', async (c) => {
   const rows = await all(
     c.env.DB,
-    `SELECT p.id, p.nombre, p.notas, p.activa, p.created_at, p.updated_at,
+    `SELECT p.id, p.nombre, p.estado, p.notas, p.activa, p.created_at, p.updated_at,
             (SELECT COUNT(*) FROM home_administration_periods hp WHERE hp.property_id = p.id) AS periodos
      FROM home_properties p
      ORDER BY p.activa DESC, p.id`,
@@ -65,8 +68,9 @@ home.post('/properties', async (c) => {
 
   const meta = await run(
     c.env.DB,
-    'INSERT INTO home_properties (nombre, notas, activa) VALUES (?, ?, ?)',
+    'INSERT INTO home_properties (nombre, estado, notas, activa) VALUES (?, ?, ?, ?)',
     property.nombre,
+    property.estado,
     property.notas,
     property.activa,
   )
@@ -86,8 +90,9 @@ home.put('/properties/:id', async (c) => {
 
   await run(
     c.env.DB,
-    `UPDATE home_properties SET nombre = ?, notas = ?, activa = ?, updated_at = datetime('now') WHERE id = ?`,
+    `UPDATE home_properties SET nombre = ?, estado = ?, notas = ?, activa = ?, updated_at = datetime('now') WHERE id = ?`,
     property.nombre,
+    property.estado,
     property.notas,
     property.activa,
     id,
@@ -108,8 +113,228 @@ home.delete('/properties/:id', async (c) => {
   if (Number(usage?.total ?? 0) > 0) {
     return fail(c, 'La propiedad tiene mensualidades registradas; elimina primero su historial', 409)
   }
+  const movementsUsage = await first(
+    c.env.DB,
+    'SELECT COUNT(*) AS total FROM movements WHERE home_property_id = ?',
+    id,
+  )
+  if (Number(movementsUsage?.total ?? 0) > 0) {
+    return fail(c, 'La propiedad tiene movimientos vinculados; su historial financiero se conserva en Gastos', 409)
+  }
+  const documents = await all(c.env.DB, 'SELECT file_key FROM home_property_documents WHERE property_id = ?', id)
+  for (const document of documents) {
+    await c.env.FILES.delete(document.file_key)
+  }
+  await run(c.env.DB, 'DELETE FROM home_property_documents WHERE property_id = ?', id)
+  await run(c.env.DB, 'UPDATE subscriptions SET home_property_id = NULL WHERE home_property_id = ?', id)
   await run(c.env.DB, 'DELETE FROM home_properties WHERE id = ?', id)
   return ok(c, { id })
+})
+
+// Detalle de la propiedad: documentos, fijos vinculados y movimientos
+// sincronizados con Finanzas (por home_property_id directo o por fijo
+// vinculado). El resumen se calcula SOLO aquí.
+home.get('/properties/:id', async (c) => {
+  const db = c.env.DB
+  const id = toInteger(c.req.param('id'))
+  if (!Number.isInteger(id)) return fail(c, 'ID inválido')
+  const property = await first(db, 'SELECT * FROM home_properties WHERE id = ?', id)
+  if (!property) return fail(c, 'Propiedad no encontrada', 404)
+
+  const documents = await all(
+    db,
+    'SELECT id, nombre, file_name, file_size, created_at FROM home_property_documents WHERE property_id = ? ORDER BY created_at DESC, id DESC',
+    id,
+  )
+  const subscriptions = await all(
+    db,
+    `SELECT id, nombre, tipo, monto, activa, home_property_id
+     FROM subscriptions
+     WHERE activa = 1 OR home_property_id = ?
+     ORDER BY tipo DESC, nombre COLLATE NOCASE`,
+    id,
+  )
+  const movements = await all(
+    db,
+    `SELECT m.id, m.fecha, m.tipo, m.descripcion, m.monto, m.subscription_id, m.home_property_id,
+            c.nombre AS categoria_nombre, c.icono AS categoria_icono
+     FROM movements m
+     LEFT JOIN categories c ON c.id = m.categoria_id
+     WHERE m.home_property_id = ?
+        OR m.subscription_id IN (SELECT s.id FROM subscriptions s WHERE s.home_property_id = ?)
+     ORDER BY m.fecha DESC, m.id DESC`,
+    id,
+    id,
+  )
+
+  const anioActual = todayIso().slice(0, 4)
+  const resumen = {
+    total_ingresos: 0,
+    total_gastos: 0,
+    balance: 0,
+    anio: Number(anioActual),
+    ingresos_anio: 0,
+    gastos_anio: 0,
+    balance_anio: 0,
+    count: movements.length,
+  }
+  for (const movement of movements) {
+    const monto = Number(movement.monto ?? 0)
+    const esAnio = String(movement.fecha).startsWith(anioActual)
+    if (movement.tipo === 'ingreso') {
+      resumen.total_ingresos += monto
+      if (esAnio) resumen.ingresos_anio += monto
+    } else {
+      resumen.total_gastos += monto
+      if (esAnio) resumen.gastos_anio += monto
+    }
+  }
+  resumen.balance = resumen.total_ingresos - resumen.total_gastos
+  resumen.balance_anio = resumen.ingresos_anio - resumen.gastos_anio
+
+  return ok(c, { property, documents, subscriptions, movements, resumen })
+})
+
+// Vincular fijos (ej. arriendo recibido) a la propiedad: arrastra el
+// histórico de movimientos aplicados de esos fijos sin duplicar nada.
+home.put('/properties/:id/subscriptions', async (c) => {
+  const db = c.env.DB
+  const id = toInteger(c.req.param('id'))
+  if (!Number.isInteger(id)) return fail(c, 'ID inválido')
+  const property = await first(db, 'SELECT id FROM home_properties WHERE id = ?', id)
+  if (!property) return fail(c, 'Propiedad no encontrada', 404)
+  const body = await readJson(c)
+  if (!body || !Array.isArray(body.ids)) return fail(c, 'ids debe ser una lista de fijos')
+  const ids = body.ids.map((value) => toInteger(value))
+  if (ids.some((value) => !Number.isInteger(value))) return fail(c, 'ids debe contener solo IDs válidos')
+
+  await run(db, 'UPDATE subscriptions SET home_property_id = NULL WHERE home_property_id = ?', id)
+  for (const subscriptionId of ids) {
+    await run(db, 'UPDATE subscriptions SET home_property_id = ? WHERE id = ?', id, subscriptionId)
+  }
+  return ok(c, { id, vinculados: ids })
+})
+
+// Movimiento puntual de la propiedad (imprevisto, arreglo, ingreso extra):
+// se inserta como movement normal y aparece también en Gastos e Ingresos.
+home.post('/properties/:id/movements', async (c) => {
+  const db = c.env.DB
+  const id = toInteger(c.req.param('id'))
+  if (!Number.isInteger(id)) return fail(c, 'ID inválido')
+  const property = await first(db, 'SELECT * FROM home_properties WHERE id = ?', id)
+  if (!property) return fail(c, 'Propiedad no encontrada', 404)
+  const body = await readJson(c)
+  if (!body) return fail(c, 'Body JSON inválido')
+
+  const tipo = cleanText(body.tipo, 'gasto')
+  const concepto = cleanText(body.concepto)
+  const fecha = cleanText(body.fecha, todayIso())
+  const monto = toNumber(body.monto)
+  if (tipo !== 'gasto' && tipo !== 'ingreso') return fail(c, 'El tipo debe ser gasto o ingreso')
+  if (!concepto) return fail(c, 'El concepto es obligatorio')
+  if (concepto.length > 120) return fail(c, 'El concepto no puede superar 120 caracteres')
+  if (!isNonNegative(monto) || monto <= 0) return fail(c, 'El monto debe ser mayor a 0')
+  if (!isValidDate(fecha)) return fail(c, 'La fecha debe ser una fecha real YYYY-MM-DD')
+
+  const categoria = tipo === 'gasto'
+    ? await first(db, `SELECT id FROM categories WHERE nombre = 'Propiedades' AND tipo = 'gasto'`)
+    : await first(db, `SELECT id FROM categories WHERE nombre = 'Arriendo recibido' AND tipo = 'ingreso'`)
+
+  const meta = await run(
+    db,
+    `INSERT INTO movements (fecha, tipo, categoria_id, descripcion, monto, subscription_id, home_property_id)
+     VALUES (?, ?, ?, ?, ?, NULL, ?)`,
+    fecha,
+    tipo,
+    categoria?.id ?? null,
+    `${property.nombre}: ${concepto}`,
+    monto,
+    id,
+  )
+  return ok(c, await first(db, 'SELECT * FROM movements WHERE id = ?', meta.last_row_id), 201)
+})
+
+// ── Documentos PDF de la propiedad (R2 privado, metadatos en D1) ────────────
+
+home.post('/properties/:id/documents', async (c) => {
+  const db = c.env.DB
+  const id = toInteger(c.req.param('id'))
+  if (!Number.isInteger(id)) return fail(c, 'ID inválido')
+  const property = await first(db, 'SELECT id FROM home_properties WHERE id = ?', id)
+  if (!property) return fail(c, 'Propiedad no encontrada', 404)
+  if (!String(c.req.header('content-type') ?? '').toLowerCase().startsWith('application/pdf')) {
+    return fail(c, 'Solo se permiten archivos PDF')
+  }
+
+  let fileName = 'documento.pdf'
+  try {
+    fileName = decodeURIComponent(c.req.header('x-file-name') ?? fileName)
+  } catch {
+    return fail(c, 'El nombre del archivo no es válido')
+  }
+  fileName = cleanText(fileName, 'documento.pdf').slice(0, 180)
+  const nombre = cleanText(fileName.replace(/\.pdf$/i, ''), 'Documento').slice(0, 120)
+
+  const buffer = await c.req.arrayBuffer()
+  if (!buffer.byteLength) return fail(c, 'El archivo está vacío')
+  if (buffer.byteLength > MAX_FILE_BYTES) return fail(c, 'El archivo no puede superar 10 MB')
+  const signature = new TextDecoder().decode(buffer.slice(0, 5))
+  if (signature !== '%PDF-') return fail(c, 'El archivo no contiene un PDF válido')
+
+  const key = `casa/${id}/docs/${Date.now()}-${fileName.replace(/[^\w.\-]+/g, '_')}`
+  await c.env.FILES.put(key, buffer, { httpMetadata: { contentType: 'application/pdf' } })
+  const meta = await run(
+    db,
+    'INSERT INTO home_property_documents (property_id, nombre, file_key, file_name, file_size) VALUES (?, ?, ?, ?, ?)',
+    id,
+    nombre,
+    key,
+    fileName,
+    buffer.byteLength,
+  )
+  return ok(c, await first(db, 'SELECT id, nombre, file_name, file_size, created_at FROM home_property_documents WHERE id = ?', meta.last_row_id), 201)
+})
+
+home.get('/documents/:docId/file', async (c) => {
+  const docId = toInteger(c.req.param('docId'))
+  if (!Number.isInteger(docId)) return fail(c, 'ID inválido')
+  const document = await first(c.env.DB, 'SELECT file_key, file_name FROM home_property_documents WHERE id = ?', docId)
+  if (!document) return fail(c, 'Documento no encontrado', 404)
+  const object = await c.env.FILES.get(document.file_key)
+  if (!object) return fail(c, 'Archivo no encontrado en el almacenamiento', 404)
+
+  const safeName = (document.file_name ?? 'documento.pdf').replace(/["\r\n]/g, '')
+  const disposition = c.req.query('download') === '1' ? 'attachment' : 'inline'
+  return c.body(object.body, 200, {
+    'content-type': 'application/pdf',
+    'content-disposition': `${disposition}; filename="${safeName}"`,
+    'cache-control': 'private, no-store',
+  })
+})
+
+home.put('/documents/:docId', async (c) => {
+  const docId = toInteger(c.req.param('docId'))
+  if (!Number.isInteger(docId)) return fail(c, 'ID inválido')
+  const current = await first(c.env.DB, 'SELECT id FROM home_property_documents WHERE id = ?', docId)
+  if (!current) return fail(c, 'Documento no encontrado', 404)
+  const body = await readJson(c)
+  if (!body) return fail(c, 'Body JSON inválido')
+  const nombre = cleanText(body.nombre)
+  if (!nombre) return fail(c, 'El nombre del documento es obligatorio')
+  if (nombre.length > 120) return fail(c, 'El nombre no puede superar 120 caracteres')
+
+  await run(c.env.DB, `UPDATE home_property_documents SET nombre = ?, updated_at = datetime('now') WHERE id = ?`, nombre, docId)
+  return ok(c, await first(c.env.DB, 'SELECT id, nombre, file_name, file_size, created_at FROM home_property_documents WHERE id = ?', docId))
+})
+
+home.delete('/documents/:docId', async (c) => {
+  const docId = toInteger(c.req.param('docId'))
+  if (!Number.isInteger(docId)) return fail(c, 'ID inválido')
+  const current = await first(c.env.DB, 'SELECT id, file_key FROM home_property_documents WHERE id = ?', docId)
+  if (!current) return fail(c, 'Documento no encontrado', 404)
+  await c.env.FILES.delete(current.file_key)
+  await run(c.env.DB, 'DELETE FROM home_property_documents WHERE id = ?', docId)
+  return ok(c, { id: docId })
 })
 
 // ── Periodos (cuenta de cobro + pago) ───────────────────────────────────────

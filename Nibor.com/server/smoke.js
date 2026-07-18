@@ -82,18 +82,6 @@ async function cleanupSmokeData(platformId) {
     await del(`/family/${member.id}`)
   }
 
-  const homeProperties = await request('/home/properties')
-  for (const propertyEntry of homeProperties.filter((entry) => String(entry.nombre).startsWith('Smoke '))) {
-    const homeData = await request(`/home/periods?property_id=${propertyEntry.id}`)
-    for (const homeAnio of homeData.anios) {
-      const yearData = await request(`/home/periods?property_id=${propertyEntry.id}&anio=${homeAnio}`)
-      for (const period of yearData.periods) {
-        await del(`/home/periods/${period.id}`)
-      }
-    }
-    await del(`/home/properties/${propertyEntry.id}`)
-  }
-
   const knowledge = await request('/knowledge/items')
   for (const item of knowledge.items.filter((entry) => String(entry.titulo).startsWith('Smoke '))) {
     await del(`/knowledge/items/${item.id}`)
@@ -112,6 +100,18 @@ async function cleanupSmokeData(platformId) {
   const movements = await request(`/movements?anio=${smokeYear}`)
   for (const movement of movements) {
     await del(`/movements/${movement.id}`)
+  }
+
+  const homeProperties = await request('/home/properties')
+  for (const propertyEntry of homeProperties.filter((entry) => String(entry.nombre).startsWith('Smoke '))) {
+    const homeData = await request(`/home/periods?property_id=${propertyEntry.id}`)
+    for (const homeAnio of homeData.anios) {
+      const yearData = await request(`/home/periods?property_id=${propertyEntry.id}&anio=${homeAnio}`)
+      for (const period of yearData.periods) {
+        await del(`/home/periods/${period.id}`)
+      }
+    }
+    await del(`/home/properties/${propertyEntry.id}`)
   }
 
   const vehicles = await request('/vehicles')
@@ -889,6 +889,69 @@ async function run() {
 
   const blockedProperty = await expectFailure(`/home/properties/${homeProperty.id}`, { method: 'DELETE' })
   if (!String(blockedProperty.error ?? '').includes('historial')) throw new Error('Propiedad con historial no bloqueo el borrado')
+
+  const rentedProperty = await put(`/home/properties/${homeProperty.id}`, { estado: 'en_arriendo' })
+  if (rentedProperty.estado !== 'en_arriendo') throw new Error('Propiedad smoke no guardo el estado')
+  const invalidPropertyState = await expectFailure(`/home/properties/${homeProperty.id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ estado: 'regalada' }),
+  })
+  if (!String(invalidPropertyState.error ?? '').includes('estado')) throw new Error('Propiedad no rechazo estado invalido')
+
+  const homeGasto = await post(`/home/properties/${homeProperty.id}/movements`, {
+    tipo: 'gasto',
+    concepto: 'Arreglo smoke',
+    fecha: `${smokeYear}-01-07`,
+    monto: 30000,
+  })
+  if (!homeGasto.id || homeGasto.home_property_id !== homeProperty.id) throw new Error('Gasto de propiedad no quedo vinculado')
+  const homeIngreso = await post(`/home/properties/${homeProperty.id}/movements`, {
+    tipo: 'ingreso',
+    concepto: 'Deposito smoke',
+    fecha: `${smokeYear}-01-08`,
+    monto: 100000,
+  })
+  if (!homeIngreso.id || homeIngreso.tipo !== 'ingreso') throw new Error('Ingreso de propiedad no se creo')
+
+  const emptyLink = await put(`/home/properties/${homeProperty.id}/subscriptions`, { ids: [] })
+  if (!Array.isArray(emptyLink.vinculados)) throw new Error('Vincular fijos no devolvio la lista esperada')
+
+  const homePropertyDetail = await request(`/home/properties/${homeProperty.id}`)
+  if (
+    homePropertyDetail.movements.length !== 2
+    || homePropertyDetail.resumen.total_ingresos !== 100000
+    || homePropertyDetail.resumen.total_gastos !== 30000
+    || homePropertyDetail.resumen.balance !== 70000
+  ) {
+    throw new Error(`Resumen de movimientos de propiedad no cuadra: ${JSON.stringify(homePropertyDetail.resumen)}`)
+  }
+
+  const homeDocResponse = await fetch(`${baseUrl}/home/properties/${homeProperty.id}/documents`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/pdf',
+      'x-file-name': encodeURIComponent('smoke-contrato.pdf'),
+    },
+    body: homePdfBytes,
+  })
+  const homeDocJson = await homeDocResponse.json()
+  if (!homeDocResponse.ok || homeDocJson.data.nombre !== 'smoke-contrato') {
+    throw new Error(`Upload documento de propiedad fallo: ${JSON.stringify(homeDocJson)}`)
+  }
+  const homeDocId = homeDocJson.data.id
+  const homeDocDownload = await fetch(`${baseUrl}/home/documents/${homeDocId}/file`)
+  const homeDocBuffer = await homeDocDownload.arrayBuffer()
+  if (
+    !homeDocDownload.ok
+    || homeDocBuffer.byteLength !== homePdfBytes.byteLength
+    || !String(homeDocDownload.headers.get('content-disposition')).startsWith('inline')
+    || !String(homeDocDownload.headers.get('cache-control')).includes('no-store')
+  ) {
+    throw new Error('Documento de propiedad no hizo roundtrip binario inline con no-store')
+  }
+  const renamedHomeDoc = await put(`/home/documents/${homeDocId}`, { nombre: 'Smoke contrato renombrado' })
+  if (renamedHomeDoc.nombre !== 'Smoke contrato renombrado') throw new Error('No se renombro el documento de propiedad')
+  await del(`/home/documents/${homeDocId}`)
 
   const smokePet = await post('/pets', {
     nombre: `Smoke mascota ${Date.now()}`,

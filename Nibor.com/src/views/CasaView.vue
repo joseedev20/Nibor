@@ -2,7 +2,9 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { formatCOP, formatDate, monthName } from '../utils/format.js'
 
-const property = ref(null)
+const properties = ref([])
+const selectedPropertyId = ref(null)
+const subTab = ref('admin')
 const periods = ref([])
 const anios = ref([])
 const resumen = ref(null)
@@ -10,6 +12,15 @@ const loading = ref(true)
 const pageError = ref('')
 const selectedAnio = ref(null)
 const estadoFilter = ref('')
+
+const documents = ref([])
+const movements = ref([])
+const movResumen = ref(null)
+const subscriptions = ref([])
+const uploadingDocument = ref(false)
+const previewDocument = ref(null)
+const movementOpen = ref(false)
+const savingSubscription = ref(false)
 
 const editorOpen = ref(false)
 const saving = ref(false)
@@ -19,6 +30,20 @@ const paymentPeriod = ref(null)
 const propertyEditorOpen = ref(false)
 const uploadingId = ref(null)
 const previewPeriod = ref(null)
+
+const property = computed(() => properties.value.find((item) => item.id === selectedPropertyId.value) ?? null)
+
+const ESTADO_PROPIEDAD = {
+  en_arriendo: { label: 'En arriendo', dot: 'bg-emerald-500', badge: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' },
+  propia: { label: 'Propia', dot: 'bg-sky-500', badge: 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300' },
+  vendida: { label: 'Vendida', dot: 'bg-zinc-400', badge: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300' },
+}
+
+const SUB_TABS = [
+  { id: 'admin', label: '🧾 Administración' },
+  { id: 'movimientos', label: '💸 Movimientos' },
+  { id: 'documentos', label: '📄 Documentos' },
+]
 
 const ESTADO_META = {
   pendiente: { label: 'Pendiente', badge: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' },
@@ -55,7 +80,8 @@ const form = reactive({
 })
 
 const paymentForm = reactive({ fecha_pago: '', valor_pagado: '', mora_cobrada: '' })
-const propertyForm = reactive({ id: null, nombre: '', notas: '' })
+const propertyForm = reactive({ id: null, nombre: '', estado: 'en_arriendo', notas: '' })
+const movementForm = reactive({ tipo: 'gasto', concepto: '', fecha: '', monto: '' })
 
 const yearOptions = computed(() => {
   const set = new Set(anios.value)
@@ -74,24 +100,68 @@ async function fetchJson(path, options = {}) {
   return json.data
 }
 
-async function loadPeriods() {
+async function loadCasa() {
   try {
-    const params = new URLSearchParams()
-    if (selectedAnio.value) params.set('anio', String(selectedAnio.value))
-    if (estadoFilter.value) params.set('estado', estadoFilter.value)
-    const query = params.toString()
-    const data = await fetchJson(`/api/home/periods${query ? `?${query}` : ''}`)
-    property.value = data.property
-    periods.value = data.periods
-    anios.value = data.anios
-    resumen.value = data.resumen
-    if (data.resumen) selectedAnio.value = data.resumen.anio
+    properties.value = await fetchJson('/api/home/properties')
+    if (!properties.value.length) {
+      selectedPropertyId.value = null
+      loading.value = false
+      return
+    }
+    if (!properties.value.some((item) => item.id === selectedPropertyId.value)) {
+      selectedPropertyId.value = properties.value[0].id
+      subTab.value = properties.value[0].estado === 'vendida' ? 'documentos' : 'admin'
+    }
+    await Promise.all([loadPeriods(), loadDetail()])
     pageError.value = ''
   } catch (error) {
     pageError.value = error.message
   } finally {
     loading.value = false
   }
+}
+
+async function loadPeriods() {
+  if (!selectedPropertyId.value) return
+  try {
+    const params = new URLSearchParams()
+    params.set('property_id', String(selectedPropertyId.value))
+    if (selectedAnio.value) params.set('anio', String(selectedAnio.value))
+    if (estadoFilter.value) params.set('estado', estadoFilter.value)
+    const data = await fetchJson(`/api/home/periods?${params.toString()}`)
+    periods.value = data.periods
+    anios.value = data.anios
+    resumen.value = data.resumen
+    if (data.resumen) selectedAnio.value = data.resumen.anio
+  } catch (error) {
+    pageError.value = error.message
+  }
+}
+
+async function loadDetail() {
+  if (!selectedPropertyId.value) return
+  try {
+    const data = await fetchJson(`/api/home/properties/${selectedPropertyId.value}`)
+    documents.value = data.documents
+    movements.value = data.movements
+    movResumen.value = data.resumen
+    subscriptions.value = data.subscriptions
+  } catch (error) {
+    pageError.value = error.message
+  }
+}
+
+function selectProperty(id) {
+  if (selectedPropertyId.value === id) return
+  selectedPropertyId.value = id
+  selectedAnio.value = null
+  estadoFilter.value = ''
+  periods.value = []
+  resumen.value = null
+  const selected = properties.value.find((item) => item.id === id)
+  subTab.value = selected?.estado === 'vendida' ? 'documentos' : 'admin'
+  loadPeriods()
+  loadDetail()
 }
 
 function changeAnio(event) {
@@ -106,10 +176,11 @@ function changeEstado(value) {
 
 // ── Propiedad ────────────────────────────────────────────────────────────────
 
-function openPropertyEditor() {
-  propertyForm.id = property.value?.id ?? null
-  propertyForm.nombre = property.value?.nombre ?? ''
-  propertyForm.notas = property.value?.notas ?? ''
+function openPropertyEditor(target = null) {
+  propertyForm.id = target?.id ?? null
+  propertyForm.nombre = target?.nombre ?? ''
+  propertyForm.estado = target?.estado ?? 'en_arriendo'
+  propertyForm.notas = target?.notas ?? ''
   editorError.value = ''
   propertyEditorOpen.value = true
 }
@@ -118,16 +189,154 @@ async function saveProperty() {
   saving.value = true
   editorError.value = ''
   try {
-    await fetchJson(propertyForm.id ? `/api/home/properties/${propertyForm.id}` : '/api/home/properties', {
+    const saved = await fetchJson(propertyForm.id ? `/api/home/properties/${propertyForm.id}` : '/api/home/properties', {
       method: propertyForm.id ? 'PUT' : 'POST',
-      body: JSON.stringify({ nombre: propertyForm.nombre, notas: propertyForm.notas }),
+      body: JSON.stringify({ nombre: propertyForm.nombre, estado: propertyForm.estado, notas: propertyForm.notas }),
     })
     propertyEditorOpen.value = false
-    await loadPeriods()
+    if (!propertyForm.id && saved?.id) {
+      selectedPropertyId.value = saved.id
+      subTab.value = saved.estado === 'vendida' ? 'documentos' : 'admin'
+    }
+    await loadCasa()
   } catch (error) {
     editorError.value = error.message
   } finally {
     saving.value = false
+  }
+}
+
+// ── Movimientos de la propiedad (sincronizados con Gastos) ───────────────────
+
+function openMovement(tipo = 'gasto') {
+  movementForm.tipo = tipo
+  movementForm.concepto = ''
+  movementForm.fecha = new Date().toISOString().slice(0, 10)
+  movementForm.monto = ''
+  editorError.value = ''
+  movementOpen.value = true
+}
+
+async function saveMovement() {
+  saving.value = true
+  editorError.value = ''
+  try {
+    await fetchJson(`/api/home/properties/${selectedPropertyId.value}/movements`, {
+      method: 'POST',
+      body: JSON.stringify({
+        tipo: movementForm.tipo,
+        concepto: movementForm.concepto,
+        fecha: movementForm.fecha,
+        monto: movementForm.monto,
+      }),
+    })
+    movementOpen.value = false
+    await loadDetail()
+  } catch (error) {
+    editorError.value = error.message
+  } finally {
+    saving.value = false
+  }
+}
+
+async function deleteMovement(movement) {
+  if (!window.confirm(`¿Eliminar "${movement.descripcion}"? También desaparecerá de Gastos e Ingresos.`)) return
+  pageError.value = ''
+  try {
+    await fetchJson(`/api/movements/${movement.id}`, { method: 'DELETE' })
+    await loadDetail()
+  } catch (error) {
+    pageError.value = error.message
+  }
+}
+
+function isLinkedSubscription(subscription) {
+  return subscription.home_property_id === selectedPropertyId.value
+}
+
+async function toggleSubscription(subscription) {
+  savingSubscription.value = true
+  pageError.value = ''
+  try {
+    const linkedIds = subscriptions.value
+      .filter((item) => isLinkedSubscription(item) && item.id !== subscription.id)
+      .map((item) => item.id)
+    if (!isLinkedSubscription(subscription)) linkedIds.push(subscription.id)
+    await fetchJson(`/api/home/properties/${selectedPropertyId.value}/subscriptions`, {
+      method: 'PUT',
+      body: JSON.stringify({ ids: linkedIds }),
+    })
+    await loadDetail()
+  } catch (error) {
+    pageError.value = error.message
+  } finally {
+    savingSubscription.value = false
+  }
+}
+
+// ── Documentos PDF de la propiedad ───────────────────────────────────────────
+
+async function uploadDocument(event) {
+  const input = event.target
+  const file = input.files?.[0]
+  if (!file) return
+  if (file.type !== 'application/pdf') {
+    pageError.value = 'Solo puedes subir archivos PDF.'
+    input.value = ''
+    return
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    pageError.value = 'El PDF no puede superar 10 MB.'
+    input.value = ''
+    return
+  }
+
+  uploadingDocument.value = true
+  pageError.value = ''
+  try {
+    const response = await fetch(`/api/home/properties/${selectedPropertyId.value}/documents`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/pdf',
+        'x-file-name': encodeURIComponent(file.name),
+      },
+      body: file,
+    })
+    const json = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(json.error ?? 'No se pudo subir el PDF')
+    await loadDetail()
+  } catch (error) {
+    pageError.value = error.message
+  } finally {
+    uploadingDocument.value = false
+    input.value = ''
+  }
+}
+
+async function renameDocument(documentRow) {
+  const nombre = window.prompt('Nombre del documento:', documentRow.nombre)
+  if (nombre === null || !nombre.trim() || nombre.trim() === documentRow.nombre) return
+  pageError.value = ''
+  try {
+    await fetchJson(`/api/home/documents/${documentRow.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ nombre: nombre.trim() }),
+    })
+    await loadDetail()
+  } catch (error) {
+    pageError.value = error.message
+  }
+}
+
+async function deleteDocument(documentRow) {
+  if (!window.confirm(`¿Eliminar el documento "${documentRow.nombre}"? Esta acción no se puede deshacer.`)) return
+  pageError.value = ''
+  try {
+    await fetchJson(`/api/home/documents/${documentRow.id}`, { method: 'DELETE' })
+    if (previewDocument.value?.id === documentRow.id) previewDocument.value = null
+    await loadDetail()
+  } catch (error) {
+    pageError.value = error.message
   }
 }
 
@@ -365,7 +574,7 @@ function formatFileSize(value) {
     : `${Math.round(bytes / 1024)} KB`
 }
 
-onMounted(loadPeriods)
+onMounted(loadCasa)
 </script>
 
 <template>
@@ -379,11 +588,14 @@ onMounted(loadPeriods)
         </p>
       </div>
       <div v-if="property" class="flex shrink-0 gap-2">
-        <button type="button" class="h-10 rounded-lg border border-zinc-200 px-4 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800" @click="openPropertyEditor">
-          {{ property.nombre }} ✎
+        <button type="button" class="h-10 rounded-lg border border-zinc-200 px-4 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800" @click="openPropertyEditor(null)">
+          + Propiedad
         </button>
-        <button type="button" class="h-10 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-500" @click="openEditor()">
+        <button v-if="subTab === 'admin' && property.estado !== 'vendida'" type="button" class="h-10 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-500" @click="openEditor()">
           + Registrar mes
+        </button>
+        <button v-else-if="subTab === 'movimientos'" type="button" class="h-10 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-500" @click="openMovement()">
+          + Movimiento
         </button>
       </div>
     </header>
@@ -398,11 +610,54 @@ onMounted(loadPeriods)
     <div v-else-if="!property" class="mt-6 rounded-lg border border-dashed border-zinc-300 p-12 text-center dark:border-zinc-700">
       <div class="text-4xl">🏢</div>
       <p class="mt-3 font-semibold text-zinc-800 dark:text-zinc-200">Configura tu propiedad</p>
-      <p class="mt-1 text-sm text-zinc-500">Dale un nombre (por ejemplo "Apartamento") y luego registra la administración de cada mes.</p>
-      <button type="button" class="mt-5 h-10 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-500" @click="openPropertyEditor">Crear propiedad</button>
+      <p class="mt-1 text-sm text-zinc-500">Dale un nombre (por ejemplo "Apartamento"), su estado (en arriendo, propia o vendida) y organiza administración, movimientos y documentos.</p>
+      <button type="button" class="mt-5 h-10 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-500" @click="openPropertyEditor(null)">Crear propiedad</button>
     </div>
 
     <template v-else>
+      <div v-if="properties.length > 1" class="mt-6 flex flex-wrap gap-1.5">
+        <button
+          v-for="item in properties"
+          :key="item.id"
+          type="button"
+          class="flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-semibold transition"
+          :class="item.id === selectedPropertyId
+            ? 'border-emerald-600 bg-emerald-600 text-white'
+            : 'border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800'"
+          @click="selectProperty(item.id)"
+        >
+          <span class="h-2 w-2 rounded-full" :class="ESTADO_PROPIEDAD[item.estado]?.dot ?? 'bg-zinc-400'" />
+          {{ item.nombre }}
+        </button>
+      </div>
+
+      <section class="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white px-5 py-4 dark:border-zinc-800 dark:bg-zinc-900">
+        <div class="min-w-0">
+          <div class="flex flex-wrap items-center gap-2">
+            <h2 class="text-xl font-bold text-zinc-950 dark:text-white">{{ property.nombre }}</h2>
+            <span class="rounded-full px-2.5 py-1 text-xs font-semibold" :class="ESTADO_PROPIEDAD[property.estado]?.badge">{{ ESTADO_PROPIEDAD[property.estado]?.label ?? property.estado }}</span>
+          </div>
+          <p v-if="property.notas" class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">{{ property.notas }}</p>
+        </div>
+        <button type="button" class="h-9 shrink-0 rounded-lg border border-zinc-200 px-3 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800" @click="openPropertyEditor(property)">Editar</button>
+      </section>
+
+      <div class="mt-4 flex flex-wrap gap-1.5">
+        <button
+          v-for="tab in SUB_TABS"
+          :key="tab.id"
+          type="button"
+          class="h-9 rounded-lg px-3 text-sm font-semibold transition"
+          :class="subTab === tab.id
+            ? 'bg-emerald-600 text-white'
+            : 'border border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800'"
+          @click="subTab = tab.id"
+        >
+          {{ tab.label }}
+        </button>
+      </div>
+
+      <template v-if="subTab === 'admin'">
       <section v-if="resumen" class="mt-6 grid gap-3 sm:grid-cols-3">
         <div class="rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
           <p class="text-xs font-medium uppercase tracking-wide text-zinc-400">Total pagado {{ resumen.anio }}</p>
@@ -546,6 +801,98 @@ onMounted(loadPeriods)
           </div>
         </article>
       </section>
+      </template>
+
+      <template v-else-if="subTab === 'movimientos'">
+        <section v-if="movResumen" class="mt-6 grid gap-3 sm:grid-cols-3">
+          <div class="rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+            <p class="text-xs font-medium uppercase tracking-wide text-zinc-400">Ingresos</p>
+            <p class="mt-1 text-2xl font-bold text-emerald-600 dark:text-emerald-400">{{ formatCOP(movResumen.total_ingresos) }}</p>
+            <p class="mt-0.5 text-xs text-zinc-500">{{ formatCOP(movResumen.ingresos_anio) }} en {{ movResumen.anio }}</p>
+          </div>
+          <div class="rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+            <p class="text-xs font-medium uppercase tracking-wide text-zinc-400">Gastos</p>
+            <p class="mt-1 text-2xl font-bold text-rose-600 dark:text-rose-400">{{ formatCOP(movResumen.total_gastos) }}</p>
+            <p class="mt-0.5 text-xs text-zinc-500">{{ formatCOP(movResumen.gastos_anio) }} en {{ movResumen.anio }}</p>
+          </div>
+          <div class="rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+            <p class="text-xs font-medium uppercase tracking-wide text-zinc-400">Balance</p>
+            <p class="mt-1 text-2xl font-bold" :class="movResumen.balance >= 0 ? 'text-zinc-950 dark:text-white' : 'text-rose-600 dark:text-rose-400'">{{ formatCOP(movResumen.balance) }}</p>
+            <p class="mt-0.5 text-xs text-zinc-500">{{ formatCOP(movResumen.balance_anio) }} en {{ movResumen.anio }}</p>
+          </div>
+        </section>
+
+        <section class="mt-4 rounded-lg border border-zinc-200 bg-white px-5 py-4 dark:border-zinc-800 dark:bg-zinc-900">
+          <div class="flex items-center justify-between gap-2">
+            <h3 class="text-sm font-semibold text-zinc-950 dark:text-white">Fijos vinculados</h3>
+            <span class="text-xs text-zinc-400">Su histórico cuenta para esta propiedad</span>
+          </div>
+          <p v-if="!subscriptions.length" class="mt-2 text-sm text-zinc-500">No tienes fijos activos en Suscripciones.</p>
+          <div v-else class="mt-3 grid gap-2 sm:grid-cols-2">
+            <label
+              v-for="subscription in subscriptions"
+              :key="subscription.id"
+              class="flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-100 px-3 py-2 text-sm dark:border-zinc-800"
+              :class="subscription.home_property_id && !isLinkedSubscription(subscription) ? 'opacity-50' : ''"
+            >
+              <input
+                type="checkbox"
+                class="h-4 w-4 accent-emerald-600"
+                :checked="isLinkedSubscription(subscription)"
+                :disabled="savingSubscription || (subscription.home_property_id !== null && !isLinkedSubscription(subscription))"
+                @change="toggleSubscription(subscription)"
+              >
+              <span class="min-w-0 flex-1 truncate text-zinc-700 dark:text-zinc-300">{{ subscription.tipo === 'ingreso' ? '💰' : '💳' }} {{ subscription.nombre }}</span>
+              <span v-if="subscription.home_property_id && !isLinkedSubscription(subscription)" class="shrink-0 text-[10px] text-zinc-400">en otra propiedad</span>
+            </label>
+          </div>
+        </section>
+
+        <div v-if="!movements.length" class="mt-4 rounded-lg border border-dashed border-zinc-300 p-10 text-center text-sm text-zinc-500 dark:border-zinc-700">
+          Sin movimientos todavía. Vincula el fijo del arriendo o registra un imprevisto con "+ Movimiento".
+        </div>
+        <section v-else class="mt-4 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+          <div v-for="movement in movements" :key="movement.id" class="flex items-center gap-3 border-b border-zinc-100 px-4 py-2.5 last:border-b-0 dark:border-zinc-800">
+            <span class="text-lg">{{ movement.categoria_icono ?? (movement.tipo === 'ingreso' ? '💰' : '🏢') }}</span>
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{{ movement.descripcion }}</p>
+              <p class="text-xs text-zinc-500">{{ formatDate(movement.fecha) }}<template v-if="movement.subscription_id"> · fijo aplicado</template></p>
+            </div>
+            <p class="shrink-0 text-sm font-semibold tabular-nums" :class="movement.tipo === 'ingreso' ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-900 dark:text-zinc-100'">
+              {{ movement.tipo === 'ingreso' ? '+' : '−' }}{{ formatCOP(movement.monto) }}
+            </p>
+            <button v-if="movement.home_property_id" type="button" class="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950" :aria-label="`Eliminar ${movement.descripcion}`" @click="deleteMovement(movement)">×</button>
+          </div>
+        </section>
+      </template>
+
+      <template v-else>
+        <div class="mt-6 flex flex-wrap items-center justify-between gap-2">
+          <p class="text-sm text-zinc-500 dark:text-zinc-400">Contratos, escrituras, paz y salvos… PDFs privados de {{ property.nombre }}.</p>
+          <label class="flex h-9 cursor-pointer items-center rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-500">
+            {{ uploadingDocument ? 'Subiendo…' : '📎 Subir PDF' }}
+            <input type="file" accept="application/pdf" class="hidden" :disabled="uploadingDocument" @change="uploadDocument">
+          </label>
+        </div>
+        <div v-if="!documents.length" class="mt-3 rounded-lg border border-dashed border-zinc-300 p-10 text-center text-sm text-zinc-500 dark:border-zinc-700">
+          Sube aquí los documentos importantes de la propiedad (PDF, máx. 10 MB).
+        </div>
+        <section v-else class="mt-3 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+          <div v-for="doc in documents" :key="doc.id" class="flex flex-wrap items-center gap-3 border-b border-zinc-100 px-4 py-2.5 last:border-b-0 dark:border-zinc-800">
+            <span class="text-lg">📄</span>
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{{ doc.nombre }}</p>
+              <p class="truncate text-xs text-zinc-500">{{ doc.file_name }} · {{ formatFileSize(doc.file_size) }}</p>
+            </div>
+            <div class="flex shrink-0 flex-wrap gap-2">
+              <button type="button" class="h-8 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-500" @click="previewDocument = doc">Ver</button>
+              <a :href="`/api/home/documents/${doc.id}/file?download=1`" class="flex h-8 items-center rounded-lg border border-zinc-200 px-3 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800">Descargar</a>
+              <button type="button" class="h-8 rounded-lg border border-zinc-200 px-3 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800" @click="renameDocument(doc)">Renombrar</button>
+              <button type="button" class="h-8 rounded-lg px-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950" @click="deleteDocument(doc)">Quitar</button>
+            </div>
+          </div>
+        </section>
+      </template>
     </template>
 
     <!-- Modal propiedad -->
@@ -559,6 +906,24 @@ onMounted(loadPeriods)
             <span class="font-medium text-zinc-700 dark:text-zinc-300">Nombre</span>
             <input v-model="propertyForm.nombre" required maxlength="120" type="text" placeholder="Apartamento" autocomplete="off" class="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
           </label>
+          <div class="grid gap-1 text-sm">
+            <span class="font-medium text-zinc-700 dark:text-zinc-300">Estado</span>
+            <div class="flex flex-wrap gap-1.5">
+              <button
+                v-for="(meta, value) in ESTADO_PROPIEDAD"
+                :key="value"
+                type="button"
+                class="h-9 rounded-lg border px-3 text-sm font-semibold transition"
+                :class="propertyForm.estado === value
+                  ? 'border-emerald-600 bg-emerald-600 text-white'
+                  : 'border-zinc-200 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800'"
+                @click="propertyForm.estado = value"
+              >
+                {{ meta.label }}
+              </button>
+            </div>
+            <p v-if="propertyForm.estado === 'vendida'" class="text-xs text-zinc-400">Una propiedad vendida conserva su historial y documentos, pero sale del registro mensual de administración.</p>
+          </div>
           <label class="grid gap-1 text-sm">
             <span class="font-medium text-zinc-700 dark:text-zinc-300">Notas <span class="font-normal text-zinc-400">(opcional)</span></span>
             <textarea v-model="propertyForm.notas" maxlength="800" rows="3" class="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100" />
@@ -724,6 +1089,56 @@ onMounted(loadPeriods)
         </div>
       </div>
       <iframe :src="`/api/home/periods/${previewPeriod.id}/file`" :title="`Administración de ${monthName(previewPeriod.mes, previewPeriod.anio)}`" class="mx-auto h-full w-full max-w-6xl rounded-b-lg bg-white" />
+    </div>
+
+    <!-- Modal movimiento -->
+    <div v-if="movementOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/50 px-4 backdrop-blur-sm" @click.self="movementOpen = false">
+      <div class="w-full max-w-md rounded-lg border border-zinc-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
+        <div class="border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
+          <h2 class="font-semibold text-zinc-950 dark:text-white">Movimiento de {{ property?.nombre }}</h2>
+        </div>
+        <form class="grid gap-4 p-5" @submit.prevent="saveMovement">
+          <div class="grid grid-cols-2 gap-1.5">
+            <button type="button" class="h-9 rounded-lg border text-sm font-semibold transition" :class="movementForm.tipo === 'gasto' ? 'border-rose-600 bg-rose-600 text-white' : 'border-zinc-200 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800'" @click="movementForm.tipo = 'gasto'">Gasto</button>
+            <button type="button" class="h-9 rounded-lg border text-sm font-semibold transition" :class="movementForm.tipo === 'ingreso' ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-zinc-200 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800'" @click="movementForm.tipo = 'ingreso'">Ingreso</button>
+          </div>
+          <label class="grid gap-1 text-sm">
+            <span class="font-medium text-zinc-700 dark:text-zinc-300">Concepto</span>
+            <input v-model="movementForm.concepto" required maxlength="120" type="text" :placeholder="movementForm.tipo === 'gasto' ? 'Arreglo, imprevisto, pintura…' : 'Depósito, ingreso extra…'" class="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
+          </label>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <label class="grid gap-1 text-sm">
+              <span class="font-medium text-zinc-700 dark:text-zinc-300">Fecha</span>
+              <input v-model="movementForm.fecha" required type="date" class="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
+            </label>
+            <label class="grid gap-1 text-sm">
+              <span class="font-medium text-zinc-700 dark:text-zinc-300">Monto</span>
+              <input v-model.number="movementForm.monto" required type="number" step="0.01" min="0.01" class="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-right tabular-nums text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
+            </label>
+          </div>
+          <p class="rounded-lg bg-zinc-50 px-3 py-2 text-xs text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400">Se guardará también en Gastos e Ingresos, vinculado a esta propiedad.</p>
+          <div v-if="editorError" class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300">{{ editorError }}</div>
+          <div class="flex justify-end gap-2 pt-1">
+            <button type="button" class="h-10 rounded-lg border border-zinc-200 px-4 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800" @click="movementOpen = false">Cancelar</button>
+            <button type="submit" class="h-10 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-60" :disabled="saving">{{ saving ? 'Guardando…' : 'Guardar' }}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Visor PDF de documentos -->
+    <div v-if="previewDocument" class="fixed inset-0 z-50 flex flex-col bg-zinc-950/90 p-3 sm:p-6">
+      <div class="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 rounded-t-lg bg-zinc-900 px-4 py-3 text-white">
+        <div class="min-w-0">
+          <p class="truncate text-sm font-semibold">{{ previewDocument.nombre }} · {{ property?.nombre }}</p>
+          <p class="truncate text-xs text-zinc-400">{{ previewDocument.file_name }}</p>
+        </div>
+        <div class="flex shrink-0 gap-2">
+          <a :href="`/api/home/documents/${previewDocument.id}/file?download=1`" class="flex h-9 items-center rounded-lg bg-emerald-600 px-3 text-xs font-semibold hover:bg-emerald-500">Descargar</a>
+          <button type="button" class="h-9 rounded-lg bg-zinc-700 px-3 text-sm font-semibold hover:bg-zinc-600" @click="previewDocument = null">Cerrar</button>
+        </div>
+      </div>
+      <iframe :src="`/api/home/documents/${previewDocument.id}/file`" :title="`Documento ${previewDocument.nombre}`" class="mx-auto h-full w-full max-w-6xl rounded-b-lg bg-white" />
     </div>
   </div>
 </template>

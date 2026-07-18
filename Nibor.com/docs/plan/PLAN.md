@@ -117,8 +117,11 @@ Nibor.com es una app madre. Finanzas queda como el primer módulo productivo; lo
    - Directorio privado y dinámico con nombre, parentesco, tipo y número de documento visibles y notas opcionales
    - Un PDF opcional por familiar, guardado en R2 privado y disponible para ver o descargar dentro de Cloudflare Access
    - Primer MVP en `/familiar`, con API `/api/family`
-17. **Casa**:
-   - Control mensual del pago de administración de una propiedad, preparado para varias propiedades en el futuro
+17. **Casa** (v2: la propiedad es el centro):
+   - Varias propiedades con estado (`en_arriendo`, `propia`, `vendida`); una vendida conserva historial y documentos pero sale del registro mensual
+   - Movimientos por propiedad sincronizados con Finanzas: `movements.home_property_id` para puntuales (imprevistos, ingresos extra) y `subscriptions.home_property_id` para vincular fijos (ej. arriendo recibido), que arrastran su histórico aplicado sin duplicar nada
+   - Documentos PDF privados por propiedad (contratos, escrituras) en R2
+   - Control mensual del pago de administración por propiedad
    - Cada cuenta mensual admite conceptos dinámicos con saldo anterior, cuota del mes y nuevo saldo; el descuento guarda porcentaje, valor, fecha límite y total descontado sin asumir que aplica a todos los conceptos
    - Historial por año con fechas de emisión/descuento/vencimiento/pago, valor pagado, mora y estado calculado en backend (`pendiente`, `pagado_con_descuento`, `pagado_sin_descuento`, `en_mora`)
    - Resumen backend de meses pagados/pendientes, con/sin descuento, en mora, descuentos ganados, moras y total pagado del año
@@ -201,7 +204,11 @@ family_members   (id, nombre, parentesco, tipo_documento, numero_documento, tele
                  -- agregado en migración 0022; datos sensibles en D1 y PDF privado en R2, nunca en seeds/migraciones
                  -- telefono/direccion opcionales agregados en migración 0026
                  -- agregado en migración 0018 y ampliado en 0019/0020/0021; settings incluye push/prioridad/sonido por regla, silencio, pausa, resumen diario, franjas de hábitos por días y programación de vehículos
-home_properties  (id, nombre, notas, activa, created_at, updated_at)
+home_properties  (id, nombre, estado 'en_arriendo'|'propia'|'vendida', notas, activa, created_at, updated_at)
+                 -- estado agregado en migración 0032; movements.home_property_id y
+                 -- subscriptions.home_property_id vinculan finanzas a la propiedad
+home_property_documents (id, property_id, nombre, file_key, file_name, file_size)
+                 -- agregado en migración 0032: PDFs privados en R2 (`casa/{id}/docs/…`)
 home_administration_periods (id, property_id, anio, mes, fecha_emision, numero_cuenta, fecha_limite_descuento, fecha_vencimiento, descuento_pct, descuento_valor, total_con_descuento, fecha_pago, valor_pagado, mora_cobrada, notas, file_key, file_name, file_size, created_at, updated_at)
                  -- UNIQUE(property_id, anio, mes); un solo PDF por mes (cuenta + comprobante unidos) en R2
 reminders        (id, titulo, notas, frecuencia_dias NULL=único, repetir_horas NULL=general, proxima_fecha, hora, activo, completado_en)
@@ -248,7 +255,7 @@ home_administration_items (id, period_id, concepto, saldo_anterior, cuota_mes, n
 - `GET/POST/PUT/DELETE /api/family` administra familiares; `POST/GET/DELETE /api/family/:id/file` guarda, muestra/descarga y elimina el PDF privado en R2.
 - `/api/reminders` administra Recordatorios: `GET/POST/PUT/DELETE /` con estado backend (`hoy`, `vencido`, `programado`, `pausado`, `completado`) y `POST /:id/complete` (con frecuencia reprograma `proxima_fecha`; único queda completado). La regla `recordatorios` del motor de notificaciones usa las claves `regla/push/prioridad/sonido_recordatorios`.
 - `/api/pets` administra Nibor Bansky: `GET/POST/PUT/DELETE /` para mascotas (delete bloqueado con gastos; limpia R2 en cascada), `GET /:id` con vacunas (estado backend), documentos y gastos sincronizados (`pet_id` O categoría `Mascotas`) + resumen total/año/mes, `POST /:id/vaccines`, `PUT/DELETE /vaccines/:id`, `POST /:id/gastos` que inserta movements normales visibles en Gastos, y documentos PDF en R2: `POST /:id/documents` (binario + `x-file-name`), `GET /documents/:id/file` (inline/download, `no-store`), `PUT /documents/:id` (renombrar) y `DELETE /documents/:id`.
-- `/api/home` administra Nibor Casa: `GET/POST/PUT/DELETE /properties` (delete bloqueado con historial), `GET /periods?property_id=&anio=&estado=` (periodos enriquecidos con totales/estado + `resumen` + `anios`), `GET /periods/template` (sugiere el mes siguiente arrastrando conceptos, saldo anterior —0 si el último mes quedó pagado—, descuento %/valor y fechas límite/vencimiento corridas al mismo día del mes), `POST/PUT/DELETE /periods/:id`, `PUT/DELETE /periods/:id/payment` para el pago separado y `POST/GET/DELETE /periods/:id/file` para el PDF único del mes en R2 con `no-store`. El backend deriva `descuento_valor_calculado` y `total_con_descuento_calculado` cuando solo hay porcentaje; los valores digitados manualmente siempre tienen prioridad.
+- `/api/home` administra Nibor Casa: `GET/POST/PUT/DELETE /properties` (con `estado`; delete bloqueado con historial o movimientos vinculados, limpia R2 y desvincula fijos en cascada), `GET /properties/:id` (documentos + fijos + movimientos sincronizados con `resumen` backend de ingresos/gastos/balance), `PUT /properties/:id/subscriptions` (vincular fijos), `POST /properties/:id/movements` (movement normal vinculado, visible en Gastos), documentos PDF de propiedad (`POST /properties/:id/documents`, `GET /documents/:id/file`, `PUT/DELETE /documents/:id`), `GET /periods?property_id=&anio=&estado=` (periodos enriquecidos con totales/estado + `resumen` + `anios`), `GET /periods/template` (sugiere el mes siguiente arrastrando conceptos, saldo anterior —0 si el último mes quedó pagado—, descuento %/valor y fechas límite/vencimiento corridas al mismo día del mes), `POST/PUT/DELETE /periods/:id`, `PUT/DELETE /periods/:id/payment` para el pago separado y `POST/GET/DELETE /periods/:id/file` para el PDF único del mes en R2 con `no-store`. El backend deriva `descuento_valor_calculado` y `total_con_descuento_calculado` cuando solo hay porcentaje; los valores digitados manualmente siempre tienen prioridad.
 
 ## 4. Fases de trabajo
 
