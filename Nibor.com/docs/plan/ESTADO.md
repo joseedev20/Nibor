@@ -43,6 +43,7 @@ Actualizado: 2026-07-15 20:20 -05:00
 | 15 — Familiar | Codex | Completada | Directorio privado, identificación visible, visor/descarga PDF en R2, responsive y smoke |
 | 16 — Casa | Codex (plan) + Claude (implementación) | Completada | Migración `0024_home.sql` local y remota, API `/api/home`, vista `/casa`, menú, smoke, docs y deploy `64ffdf04` publicados |
 | 17 — Bansky | Claude | Completada | Migración `0027_pets.sql`, API `/api/pets`, vista `/bansky`, gastos sincronizados con movements, smoke y deploy |
+| 18 — Recordatorios | Claude | Completada | Migración `0028_reminders.sql`, API `/api/reminders`, regla `recordatorios` en el motor, vista `/recordatorios`, smoke y deploy |
 
 ## Bloqueos activos
 
@@ -112,6 +113,7 @@ Actualizado: 2026-07-15 20:20 -05:00
 - `notifications` usa `dedupe_key` para no duplicar reglas del cron. Pushover requiere `pushover_user` y `pushover_token` guardados en settings; sin llaves, solo funciona la bandeja in-app. La tabla guarda prioridad y sonido por notificación; `notification_settings` guarda la entrega por regla, silencio, pausa, resumen diario, franjas múltiples de hábitos, programación de vehículos y repetición de vencidas.
 - `family_members` guarda información identificatoria sensible; sus PDFs viven en R2 privado (`FILES`). Nunca incluir familiares, números de documento ni PDFs reales en migraciones, seeds, fixtures, logs o smoke.
 - Vehículos muestra anillos CSS de días restantes para SOAT y técnico-mecánica, adaptados a modo claro/oscuro y móvil. Es una mejora solo de UI: no cambia D1 ni la API.
+- `reminders` guarda Recordatorios. La regla `recordatorios` (claves `regla/push/prioridad/sonido_recordatorios`, seed en 0028) avisa el día programado y reinsiste a diario con dedupe `rec:{id}:{fecha}` hasta marcar hecho; con `frecuencia_dias`, completar reprograma `proxima_fecha` desde hoy. Si un recordatorio tiene `hora`, el aviso del día programado espera a esa hora.
 - `pets`/`pet_vaccines` guardan Nibor Bansky. Los gastos de mascota NO tienen tabla propia: viven en `movements` (`pet_id` + categoría seed `Mascotas` 🐾) y el detalle de la mascota suma también los movimientos registrados desde Gastos con esa categoría — no duplicar esa lógica en frontend. Edad y estado de vacunas se calculan en backend.
 - `home_properties`/`home_administration_periods`/`home_administration_items` guardan la administración de Nibor Casa. Totales de conceptos, estado del periodo y resumen anual se calculan SOLO en backend; el PDF único del mes vive en R2 (`casa/{period_id}/…`) con `no-store`. Nunca incluir direcciones, números de cuenta, valores ni PDFs reales en migraciones, seeds o smoke.
 - 2026-07-15: ampliación de Vehículos completada. Migración `0023` aplicada en D1 remota; Tarjeta de propiedad agregada a vehículos existentes/nuevos y licencia personal publicada con PDF privado, categorías dinámicas, vencimientos backend y notificaciones.

@@ -129,6 +129,11 @@ Nibor.com es una app madre. Finanzas queda como el primer módulo productivo; lo
    - Vacunas y aplicaciones con próxima dosis y estado backend (`al_dia`, `proxima` ≤30 días, `vencida`, `aplicada`)
    - Gastos integrados a `movements` en ambos sentidos: los creados desde el módulo llevan `pet_id` y categoría `Mascotas` 🐾, y los registrados en Gastos con esa categoría también cuentan para la mascota
    - MVP en `/bansky`, con API `/api/pets`
+19. **Recordatorios**:
+   - Tareas por recordar con frecuencia configurable: una sola vez o cada N días (diario, cada 2 días, semanal, quincenal, mensual, personalizado), con hora opcional
+   - Integrados al centro de notificaciones como regla `recordatorios` (in-app + push por Pushover con prioridad/sonido configurables): avisan el día programado e insisten a diario mientras estén vencidos
+   - Marcar "hecho" programa la siguiente vez si hay frecuencia, o completa el recordatorio si era único; también se pueden pausar/reanudar
+   - MVP en `/recordatorios`, con API `/api/reminders`
 
 ## 3. Modelo de datos (D1 / SQLite semantics)
 
@@ -199,6 +204,9 @@ family_members   (id, nombre, parentesco, tipo_documento, numero_documento, tele
 home_properties  (id, nombre, notas, activa, created_at, updated_at)
 home_administration_periods (id, property_id, anio, mes, fecha_emision, numero_cuenta, fecha_limite_descuento, fecha_vencimiento, descuento_pct, descuento_valor, total_con_descuento, fecha_pago, valor_pagado, mora_cobrada, notas, file_key, file_name, file_size, created_at, updated_at)
                  -- UNIQUE(property_id, anio, mes); un solo PDF por mes (cuenta + comprobante unidos) en R2
+reminders        (id, titulo, notas, frecuencia_dias NULL=único, proxima_fecha, hora, activo, completado_en)
+                 -- agregado en migración 0028 para Nibor Recordatorios; la notificación diaria
+                 -- la genera la regla 'recordatorios' del motor con dedupe `rec:{id}:{fecha}`
 pets             (id, nombre, especie 'perro'|'gato'|'otro', raza, sexo, fecha_nacimiento, color, microchip, notas, activa)
 pet_vaccines     (id, pet_id, nombre, fecha, proxima_dosis, veterinaria, notas)
                  -- agregado en migración 0027 para Nibor Bansky; movements.pet_id enlaza gastos
@@ -234,6 +242,7 @@ home_administration_items (id, period_id, concepto, saldo_anterior, cuota_mes, n
 - `GET/POST/PUT/DELETE /api/vehicles` administra vehículos; subrutas para documentos, PDF en R2 y gastos: `/items`, `/items/:id/file`, `/:id/gastos`. `/license`, `/license/categories` y `/license/file` administran la licencia de conducción y sus categorías con vencimientos independientes.
 - `GET /api/notifications` lista notificaciones y `no_leidas`; acepta `fecha=YYYY-MM-DD` para un día exacto o `desde=YYYY-MM-DD` para un rango reciente. Subrutas: `/run`, `/:id/read`, `/read-all`, `/settings`, `/test-push`. `POST /api/notifications/run` acepta `hora`/`minuto`/`fecha` opcionales para smoke y devuelve `push_enviadas`, `push_retenidas`, `en_silencio` y `pausado`.
 - `GET/POST/PUT/DELETE /api/family` administra familiares; `POST/GET/DELETE /api/family/:id/file` guarda, muestra/descarga y elimina el PDF privado en R2.
+- `/api/reminders` administra Recordatorios: `GET/POST/PUT/DELETE /` con estado backend (`hoy`, `vencido`, `programado`, `pausado`, `completado`) y `POST /:id/complete` (con frecuencia reprograma `proxima_fecha`; único queda completado). La regla `recordatorios` del motor de notificaciones usa las claves `regla/push/prioridad/sonido_recordatorios`.
 - `/api/pets` administra Nibor Bansky: `GET/POST/PUT/DELETE /` para mascotas (delete bloqueado con gastos), `GET /:id` con vacunas (estado backend) y gastos sincronizados (`pet_id` O categoría `Mascotas`) + resumen total/año/mes, `POST /:id/vaccines`, `PUT/DELETE /vaccines/:id` y `POST /:id/gastos` que inserta movements normales visibles en Gastos.
 - `/api/home` administra Nibor Casa: `GET/POST/PUT/DELETE /properties` (delete bloqueado con historial), `GET /periods?property_id=&anio=&estado=` (periodos enriquecidos con totales/estado + `resumen` + `anios`), `GET /periods/template` (sugiere el mes siguiente arrastrando conceptos, saldo anterior —0 si el último mes quedó pagado—, descuento %/valor y fechas límite/vencimiento corridas al mismo día del mes), `POST/PUT/DELETE /periods/:id`, `PUT/DELETE /periods/:id/payment` para el pago separado y `POST/GET/DELETE /periods/:id/file` para el PDF único del mes en R2 con `no-store`. El backend deriva `descuento_valor_calculado` y `total_con_descuento_calculado` cuando solo hay porcentaje; los valores digitados manualmente siempre tienen prioridad.
 
@@ -259,6 +268,7 @@ home_administration_items (id, period_id, concepto, saldo_anterior, cuota_mes, n
 | 15 | Familiar MVP: directorio, documentos visibles y PDFs privados en R2 | Codex |
 | 16 | Casa MVP: administración mensual por conceptos, pagos, descuento/mora y PDF privado en R2 | Codex (plan) + Claude (implementación) |
 | 17 | Bansky MVP: perfil de mascota, vacunas y gastos sincronizados con movements | Claude |
+| 18 | Recordatorios: tareas con frecuencia configurable integradas al centro de notificaciones | Claude |
 
 Detalle de tareas: `TAREAS_CLAUDE.md` y `TAREAS_CODEX.md` en esta carpeta.
 Reglas compartidas: `CONVENCIONES.md`. **Ambos agentes deben leer CONVENCIONES.md antes de escribir código.**

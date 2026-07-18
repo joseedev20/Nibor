@@ -9,17 +9,17 @@ const notifications = new Hono()
 const BOGOTA_OFFSET_MS = 5 * 3600 * 1000 // UTC-5 fijo
 const SETTING_KEYS = new Set([
   'push_habilitado', 'pushover_user', 'pushover_token',
-  'regla_suscripciones', 'regla_habitos', 'regla_vehiculos', 'regla_eventos',
+  'regla_suscripciones', 'regla_habitos', 'regla_vehiculos', 'regla_eventos', 'regla_recordatorios',
   'vehiculos_umbrales', 'eventos_dias_antes', 'habitos_hora',
-  'push_suscripciones', 'push_habitos', 'push_vehiculos', 'push_eventos',
-  'prioridad_suscripciones', 'prioridad_habitos', 'prioridad_vehiculos', 'prioridad_eventos',
-  'sonido_suscripciones', 'sonido_habitos', 'sonido_vehiculos', 'sonido_eventos',
+  'push_suscripciones', 'push_habitos', 'push_vehiculos', 'push_eventos', 'push_recordatorios',
+  'prioridad_suscripciones', 'prioridad_habitos', 'prioridad_vehiculos', 'prioridad_eventos', 'prioridad_recordatorios',
+  'sonido_suscripciones', 'sonido_habitos', 'sonido_vehiculos', 'sonido_eventos', 'sonido_recordatorios',
   'silencio_inicio', 'silencio_fin', 'pausado_hasta', 'resumen_diario', 'vencida_recordar_cada',
   'habitos_inicio', 'habitos_fin', 'habitos_cada_min', 'habitos_franjas',
 ])
 
 // tipo de notificación → sufijo de sus claves de configuración
-const RULE_SUFFIX = { suscripcion: 'suscripciones', habitos: 'habitos', vehiculo: 'vehiculos', evento: 'eventos' }
+const RULE_SUFFIX = { suscripcion: 'suscripciones', habitos: 'habitos', vehiculo: 'vehiculos', evento: 'eventos', recordatorio: 'recordatorios' }
 
 // Preferencias de entrega de una regla (push sí/no, prioridad, sonido)
 function ruleMeta(settings, tipo) {
@@ -299,6 +299,42 @@ async function checkEventos(db, settings, hoy, diasAntes) {
   return nuevas
 }
 
+// Recordatorios: avisa el día programado y sigue insistiendo a diario
+// (dedupe por fecha) mientras no se marque como hecho. Si tiene hora,
+// espera a que llegue esa hora del día para avisar.
+async function checkRecordatorios(db, settings, hoy, hora, minuto) {
+  const rows = await all(
+    db,
+    `SELECT id, titulo, notas, frecuencia_dias, proxima_fecha, hora
+     FROM reminders
+     WHERE activo = 1 AND completado_en IS NULL AND proxima_fecha <= ?`,
+    hoy,
+  )
+  const nowMinutes = hora * 60 + minuto
+  let nuevas = 0
+  for (const reminder of rows) {
+    const reminderMinutes = timeToMinutes(reminder.hora, null)
+    if (reminderMinutes !== null && reminder.proxima_fecha === hoy && nowMinutes < reminderMinutes) continue
+    const atraso = Math.round(
+      (new Date(`${hoy}T00:00:00Z`) - new Date(`${reminder.proxima_fecha}T00:00:00Z`)) / 86400000,
+    )
+    const titulo = atraso <= 0
+      ? `⏰ Hoy: ${reminder.titulo}`
+      : `⏰ Pendiente: ${reminder.titulo} (hace ${atraso} ${atraso === 1 ? 'día' : 'días'})`
+    const frecuencia = reminder.frecuencia_dias
+      ? `Se repite cada ${reminder.frecuencia_dias} ${Number(reminder.frecuencia_dias) === 1 ? 'día' : 'días'}`
+      : 'Una sola vez — márcalo hecho para que deje de avisar'
+    if (await insertNotification(db, settings, {
+      tipo: 'recordatorio',
+      titulo,
+      mensaje: [reminder.notas, frecuencia].filter(Boolean).join(' · '),
+      fecha: hoy,
+      dedupe: `rec:${reminder.id}:${hoy}`,
+    })) nuevas++
+  }
+  return nuevas
+}
+
 // ── Pushover ────────────────────────────────────────────────────────────────
 
 async function sendPushover(settings, { titulo, mensaje, prioridad = 0, sonido = null }) {
@@ -418,6 +454,9 @@ export async function runChecks(env, overrides = {}) {
   }
   if (settings.regla_eventos === '1') {
     nuevas += await checkEventos(db, settings, hoy, Number(settings.eventos_dias_antes ?? 1))
+  }
+  if (settings.regla_recordatorios === '1') {
+    nuevas += await checkRecordatorios(db, settings, hoy, horaEfectiva, minutoEfectivo)
   }
 
   const push = await deliverPush(db, settings, hoy, horaEfectiva)

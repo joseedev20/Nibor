@@ -7,6 +7,7 @@ const routes = [
   { path: '/conocimiento', name: 'conocimiento', component: () => import('./views/ConocimientoView.vue'), meta: { title: 'Conocimiento' } },
   { path: '/habitos', name: 'habitos', component: () => import('./views/HabitosView.vue'), meta: { title: 'Hábitos' } },
   { path: '/eventos', name: 'eventos', component: () => import('./views/EventosView.vue'), meta: { title: 'Eventos' } },
+  { path: '/recordatorios', name: 'recordatorios', component: () => import('./views/RecordatoriosView.vue'), meta: { title: 'Recordatorios' } },
   { path: '/salud', name: 'salud', component: () => import('./views/SaludView.vue'), meta: { title: 'Salud' } },
   { path: '/inversiones', name: 'inversiones', component: () => import('./views/InversionesView.vue'), meta: { title: 'Inversiones' } },
   { path: '/metas', name: 'metas', component: () => import('./views/MetasView.vue'), meta: { title: 'Metas' } },

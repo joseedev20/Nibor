@@ -52,7 +52,11 @@ const edadLabel = computed(() => {
   const parts = []
   if (edad.anios) parts.push(edad.anios === 1 ? '1 año' : `${edad.anios} años`)
   if (edad.meses || !edad.anios) parts.push(edad.meses === 1 ? '1 mes' : `${edad.meses} meses`)
-  return parts.join(' y ')
+  let label = parts.join(' y ')
+  if (edad.edad_humana !== null && edad.edad_humana !== undefined) {
+    label += ` (≈ ${edad.edad_humana} años humanos)`
+  }
+  return label
 })
 
 async function fetchJson(path, options = {}) {

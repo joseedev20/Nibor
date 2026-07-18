@@ -24,13 +24,30 @@ function cleanNullableText(value) {
   return text || null
 }
 
-function computeAge(fechaNacimiento, hoy) {
+function computeAge(fechaNacimiento, hoy, especie = null) {
   if (!fechaNacimiento) return null
   const [by, bm, bd] = fechaNacimiento.split('-').map(Number)
   const [hy, hm, hd] = hoy.split('-').map(Number)
-  let months = (hy - by) * 12 + (hm - bm) - (hd < bd ? 1 : 0)
+  const months = (hy - by) * 12 + (hm - bm) - (hd < bd ? 1 : 0)
   if (months < 0) return null
-  return { anios: Math.floor(months / 12), meses: months % 12 }
+  return {
+    anios: Math.floor(months / 12),
+    meses: months % 12,
+    edad_humana: computeHumanAge(months, especie),
+  }
+}
+
+// Equivalencia veterinaria estándar: el primer año ≈ 15 años humanos, el
+// segundo suma 9 (24 a los 2 años) y de ahí en adelante +4/año en gatos
+// y +5/año en perros. Para 'otro' no hay equivalencia confiable.
+function computeHumanAge(months, especie) {
+  if (especie !== 'gato' && especie !== 'perro') return null
+  const perYearAfterTwo = especie === 'gato' ? 4 : 5
+  let human
+  if (months <= 12) human = 15 * (months / 12)
+  else if (months <= 24) human = 15 + 9 * ((months - 12) / 12)
+  else human = 24 + perYearAfterTwo * ((months - 24) / 12)
+  return Math.round(human)
 }
 
 function computeVaccine(vaccine, hoy) {
@@ -81,7 +98,7 @@ function validatePet(pet) {
 pets.get('/', async (c) => {
   const hoy = todayIso()
   const rows = await all(c.env.DB, 'SELECT * FROM pets ORDER BY activa DESC, id')
-  return ok(c, rows.map((pet) => ({ ...pet, edad: computeAge(pet.fecha_nacimiento, hoy) })))
+  return ok(c, rows.map((pet) => ({ ...pet, edad: computeAge(pet.fecha_nacimiento, hoy, pet.especie) })))
 })
 
 pets.post('/', async (c) => {
@@ -182,7 +199,7 @@ pets.get('/:id', async (c) => {
   }
 
   return ok(c, {
-    pet: { ...pet, edad: computeAge(pet.fecha_nacimiento, hoy) },
+    pet: { ...pet, edad: computeAge(pet.fecha_nacimiento, hoy, pet.especie) },
     vaccines: vaccines.map((vaccine) => computeVaccine(vaccine, hoy)),
     gastos,
     gastos_resumen: resumen,

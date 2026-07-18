@@ -124,6 +124,11 @@ async function cleanupSmokeData(platformId) {
     await del(`/pets/${petEntry.id}`)
   }
 
+  const remindersList = await request('/reminders')
+  for (const reminderEntry of remindersList.filter((item) => String(item.titulo).startsWith('Smoke '))) {
+    await del(`/reminders/${reminderEntry.id}`)
+  }
+
   const goals = await request('/goals')
   for (const goal of goals.goals.filter((item) => String(item.nombre).startsWith('Smoke '))) {
     await del(`/goals/${goal.id}`)
@@ -932,6 +937,46 @@ async function run() {
   const blockedPet = await expectFailure(`/pets/${smokePet.id}`, { method: 'DELETE' })
   if (!String(blockedPet.error ?? '').includes('gastos')) throw new Error('Mascota con gastos no bloqueo el borrado')
 
+  const recurringReminder = await post('/reminders', {
+    titulo: `Smoke recordatorio ${Date.now()}`,
+    frecuencia_dias: 2,
+    proxima_fecha: todayIso,
+  })
+  if (recurringReminder.estado !== 'hoy') throw new Error(`Recordatorio smoke debia estar en hoy, llego ${recurringReminder.estado}`)
+
+  const completedRecurring = await post(`/reminders/${recurringReminder.id}/complete`, {})
+  if (completedRecurring.estado !== 'programado' || completedRecurring.dias_restantes !== 2) {
+    throw new Error(`Completar recurrente no programo la siguiente vez: ${completedRecurring.estado}/${completedRecurring.dias_restantes}`)
+  }
+
+  const invalidReminder = await expectFailure('/reminders', {
+    method: 'POST',
+    body: JSON.stringify({ titulo: 'Smoke invalido', frecuencia_dias: 0, proxima_fecha: todayIso }),
+  })
+  if (!String(invalidReminder.error ?? '').includes('frecuencia')) throw new Error('Recordatorio no rechazo frecuencia invalida')
+
+  const onceReminder = await post('/reminders', {
+    titulo: `Smoke pendiente ${notificationSmokeRunId}`,
+    proxima_fecha: '2000-01-04',
+  })
+  if (onceReminder.frecuencia_dias !== null || onceReminder.estado !== 'vencido') {
+    throw new Error('Recordatorio unico smoke no quedo vencido')
+  }
+
+  const reminderRun = await post('/notifications/run', { fecha: '2000-01-05' })
+  if (!Number.isInteger(reminderRun.nuevas) || reminderRun.nuevas < 1) {
+    throw new Error(`El run de notificaciones no genero el aviso del recordatorio: ${JSON.stringify(reminderRun)}`)
+  }
+  const reminderNotifications = await request('/notifications?fecha=2000-01-05')
+  const reminderNotification = reminderNotifications.notificaciones.find((item) => (
+    item.tipo === 'recordatorio' && String(item.titulo).includes(`Smoke pendiente ${notificationSmokeRunId}`)
+  ))
+  if (!reminderNotification) throw new Error('No aparecio la notificacion del recordatorio smoke')
+  await post(`/notifications/${reminderNotification.id}/read`, {})
+
+  const completedOnce = await post(`/reminders/${onceReminder.id}/complete`, {})
+  if (completedOnce.estado !== 'completado') throw new Error('Recordatorio unico no quedo completado')
+
   const vehicle = await post('/vehicles', {
     nombre: `Smoke vehiculo ${Date.now()}`,
     tipo: 'carro',
@@ -1207,7 +1252,7 @@ async function run() {
 
   await cleanupSmokeData(platform.id)
 
-  console.log('Endpoints OK: platforms, categories, cards, snapshots, movements, subscriptions/apply, summary, close-month, goals, music, knowledge, habits, loans, salud, events, vehicles, family, home, pets, notifications')
+  console.log('Endpoints OK: platforms, categories, cards, snapshots, movements, subscriptions/apply, summary, close-month, goals, music, knowledge, habits, loans, salud, events, vehicles, family, home, pets, reminders, notifications')
 }
 
 run().catch((error) => {
