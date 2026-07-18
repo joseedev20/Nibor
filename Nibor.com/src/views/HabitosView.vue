@@ -105,8 +105,10 @@ function fetchJson(path, options) {
   })
 }
 
-async function loadAll() {
-  loading.value = true
+// silent = refrescar datos sin desmontar la vista (evita el "flash" de recarga
+// al completar/posponer); el spinner solo aparece en la carga inicial.
+async function loadAll(silent = false) {
+  if (!silent) loading.value = true
   error.value = ''
   try {
     const [today, habits, progress, health, knowledge] = await Promise.all([
@@ -124,7 +126,7 @@ async function loadAll() {
   } catch (err) {
     error.value = err.message
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
 
@@ -233,7 +235,7 @@ async function saveHabit() {
     })
     notice.value = form.value.id ? 'Hábito actualizado.' : 'Hábito creado.'
     editorOpen.value = false
-    await loadAll()
+    await loadAll(true)
   } catch (err) {
     editorError.value = err.message
   } finally {
@@ -248,7 +250,7 @@ async function deleteHabit() {
     await fetchJson(`/api/habits/${form.value.id}`, { method: 'DELETE' })
     notice.value = 'Hábito eliminado.'
     editorOpen.value = false
-    await loadAll()
+    await loadAll(true)
   } catch (err) {
     editorError.value = err.message
   } finally {
@@ -259,6 +261,11 @@ async function deleteHabit() {
 async function checkHabit(habit) {
   actionLoading.value = true
   notice.value = ''
+  // Optimista: la carta sale del mazo de una y la siguiente sube sin esperar la red
+  todayData.value = {
+    ...todayData.value,
+    habits: todayData.value.habits.filter((item) => item.id !== habit.id),
+  }
   try {
     const result = await fetchJson(`/api/habits/${habit.id}/check`, {
       method: 'POST',
@@ -266,10 +273,11 @@ async function checkHabit(habit) {
       body: JSON.stringify({}),
     })
     notice.value = result.met ? 'Hábito completado por hoy.' : 'Registro guardado.'
-    await loadAll()
   } catch (err) {
     error.value = err.message
   } finally {
+    // Refresco silencioso: corrige contadores (y devuelve la carta si falló)
+    await loadAll(true)
     actionLoading.value = false
   }
 }
@@ -277,6 +285,9 @@ async function checkHabit(habit) {
 async function deferHabit(habit) {
   actionLoading.value = true
   notice.value = ''
+  // Optimista: la carta pasa al final del mazo de inmediato
+  const rest = todayData.value.habits.filter((item) => item.id !== habit.id)
+  todayData.value = { ...todayData.value, habits: [...rest, habit] }
   try {
     await fetchJson(`/api/habits/${habit.id}/defer`, {
       method: 'POST',
@@ -284,10 +295,10 @@ async function deferHabit(habit) {
       body: JSON.stringify({}),
     })
     notice.value = 'Lo moví al final de hoy.'
-    await loadAll()
   } catch (err) {
     error.value = err.message
   } finally {
+    await loadAll(true)
     actionLoading.value = false
   }
 }
@@ -308,7 +319,7 @@ async function moveHabit(index, direction) {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ order: list.map((habit) => habit.id) }),
     })
-    await loadAll()
+    await loadAll(true)
   } catch (err) {
     error.value = err.message
   }
