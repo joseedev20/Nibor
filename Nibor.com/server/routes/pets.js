@@ -6,6 +6,7 @@ import { all, fail, first, isNonNegative, isValidDate, ok, readJson, run, toInte
 // un movimiento cuenta para la mascota si tiene pet_id O categoría 'Mascotas').
 const pets = new Hono()
 
+const MAX_FILE_BYTES = 10 * 1024 * 1024
 const VALID_ESPECIES = new Set(['perro', 'gato', 'otro'])
 const VALID_SEXOS = new Set(['macho', 'hembra'])
 const PROXIMA_WARNING_DAYS = 30
@@ -147,6 +148,11 @@ pets.delete('/:id', async (c) => {
   if (Number(usage?.n ?? 0) > 0) {
     return fail(c, 'Esta mascota tiene gastos registrados; desactívala en vez de borrarla', 409)
   }
+  const documents = await all(c.env.DB, 'SELECT file_key FROM pet_documents WHERE pet_id = ?', id)
+  for (const document of documents) {
+    await c.env.FILES.delete(document.file_key)
+  }
+  await run(c.env.DB, 'DELETE FROM pet_documents WHERE pet_id = ?', id)
   await run(c.env.DB, 'DELETE FROM pet_vaccines WHERE pet_id = ?', id)
   await run(c.env.DB, 'DELETE FROM pets WHERE id = ?', id)
   return ok(c, { id })
@@ -165,6 +171,11 @@ pets.get('/:id', async (c) => {
     db,
     `SELECT * FROM pet_vaccines WHERE pet_id = ?
      ORDER BY proxima_dosis IS NULL, proxima_dosis ASC, fecha DESC`,
+    id,
+  )
+  const documents = await all(
+    db,
+    'SELECT id, nombre, file_name, file_size, created_at FROM pet_documents WHERE pet_id = ? ORDER BY created_at DESC, id DESC',
     id,
   )
 
@@ -201,9 +212,93 @@ pets.get('/:id', async (c) => {
   return ok(c, {
     pet: { ...pet, edad: computeAge(pet.fecha_nacimiento, hoy, pet.especie) },
     vaccines: vaccines.map((vaccine) => computeVaccine(vaccine, hoy)),
+    documents,
     gastos,
     gastos_resumen: resumen,
   })
+})
+
+// ── Documentos PDF (R2 privado, metadatos en D1) ────────────────────────────
+
+pets.post('/:id/documents', async (c) => {
+  const db = c.env.DB
+  const id = toInteger(c.req.param('id'))
+  if (!Number.isInteger(id)) return fail(c, 'ID inválido')
+  const pet = await first(db, 'SELECT id FROM pets WHERE id = ?', id)
+  if (!pet) return fail(c, 'Mascota no encontrada', 404)
+  if (!String(c.req.header('content-type') ?? '').toLowerCase().startsWith('application/pdf')) {
+    return fail(c, 'Solo se permiten archivos PDF')
+  }
+
+  let fileName = 'documento.pdf'
+  try {
+    fileName = decodeURIComponent(c.req.header('x-file-name') ?? fileName)
+  } catch {
+    return fail(c, 'El nombre del archivo no es válido')
+  }
+  fileName = cleanText(fileName, 'documento.pdf').slice(0, 180)
+  const nombre = cleanText(fileName.replace(/\.pdf$/i, ''), 'Documento').slice(0, 120)
+
+  const buffer = await c.req.arrayBuffer()
+  if (!buffer.byteLength) return fail(c, 'El archivo está vacío')
+  if (buffer.byteLength > MAX_FILE_BYTES) return fail(c, 'El archivo no puede superar 10 MB')
+  const signature = new TextDecoder().decode(buffer.slice(0, 5))
+  if (signature !== '%PDF-') return fail(c, 'El archivo no contiene un PDF válido')
+
+  const key = `pets/${id}/docs/${Date.now()}-${fileName.replace(/[^\w.\-]+/g, '_')}`
+  await c.env.FILES.put(key, buffer, { httpMetadata: { contentType: 'application/pdf' } })
+  const meta = await run(
+    db,
+    'INSERT INTO pet_documents (pet_id, nombre, file_key, file_name, file_size) VALUES (?, ?, ?, ?, ?)',
+    id,
+    nombre,
+    key,
+    fileName,
+    buffer.byteLength,
+  )
+  return ok(c, await first(db, 'SELECT id, nombre, file_name, file_size, created_at FROM pet_documents WHERE id = ?', meta.last_row_id), 201)
+})
+
+pets.get('/documents/:docId/file', async (c) => {
+  const docId = toInteger(c.req.param('docId'))
+  if (!Number.isInteger(docId)) return fail(c, 'ID inválido')
+  const document = await first(c.env.DB, 'SELECT file_key, file_name FROM pet_documents WHERE id = ?', docId)
+  if (!document) return fail(c, 'Documento no encontrado', 404)
+  const object = await c.env.FILES.get(document.file_key)
+  if (!object) return fail(c, 'Archivo no encontrado en el almacenamiento', 404)
+
+  const safeName = (document.file_name ?? 'documento.pdf').replace(/["\r\n]/g, '')
+  const disposition = c.req.query('download') === '1' ? 'attachment' : 'inline'
+  return c.body(object.body, 200, {
+    'content-type': 'application/pdf',
+    'content-disposition': `${disposition}; filename="${safeName}"`,
+    'cache-control': 'private, no-store',
+  })
+})
+
+pets.put('/documents/:docId', async (c) => {
+  const docId = toInteger(c.req.param('docId'))
+  if (!Number.isInteger(docId)) return fail(c, 'ID inválido')
+  const current = await first(c.env.DB, 'SELECT id FROM pet_documents WHERE id = ?', docId)
+  if (!current) return fail(c, 'Documento no encontrado', 404)
+  const body = await readJson(c)
+  if (!body) return fail(c, 'Body JSON inválido')
+  const nombre = cleanText(body.nombre)
+  if (!nombre) return fail(c, 'El nombre del documento es obligatorio')
+  if (nombre.length > 120) return fail(c, 'El nombre no puede superar 120 caracteres')
+
+  await run(c.env.DB, `UPDATE pet_documents SET nombre = ?, updated_at = datetime('now') WHERE id = ?`, nombre, docId)
+  return ok(c, await first(c.env.DB, 'SELECT id, nombre, file_name, file_size, created_at FROM pet_documents WHERE id = ?', docId))
+})
+
+pets.delete('/documents/:docId', async (c) => {
+  const docId = toInteger(c.req.param('docId'))
+  if (!Number.isInteger(docId)) return fail(c, 'ID inválido')
+  const current = await first(c.env.DB, 'SELECT id, file_key FROM pet_documents WHERE id = ?', docId)
+  if (!current) return fail(c, 'Documento no encontrado', 404)
+  await c.env.FILES.delete(current.file_key)
+  await run(c.env.DB, 'DELETE FROM pet_documents WHERE id = ?', docId)
+  return ok(c, { id: docId })
 })
 
 // ── Vacunas ─────────────────────────────────────────────────────────────────

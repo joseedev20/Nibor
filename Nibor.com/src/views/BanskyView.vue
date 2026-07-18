@@ -4,6 +4,9 @@ import { formatCOP, formatDate } from '../utils/format.js'
 
 const pet = ref(null)
 const vaccines = ref([])
+const documents = ref([])
+const uploadingDocument = ref(false)
+const previewDocument = ref(null)
 const gastos = ref([])
 const resumen = ref(null)
 const loading = ref(true)
@@ -80,6 +83,7 @@ async function loadPet() {
     const detail = await fetchJson(`/api/pets/${list[0].id}`)
     pet.value = detail.pet
     vaccines.value = detail.vaccines
+    documents.value = detail.documents ?? []
     gastos.value = detail.gastos
     resumen.value = detail.gastos_resumen
     pageError.value = ''
@@ -220,6 +224,80 @@ async function deleteGasto(gasto) {
   }
 }
 
+// ── Documentos PDF ───────────────────────────────────────────────────────────
+
+async function uploadDocument(event) {
+  const input = event.target
+  const file = input.files?.[0]
+  if (!file) return
+  if (file.type !== 'application/pdf') {
+    pageError.value = 'Solo puedes subir archivos PDF.'
+    input.value = ''
+    return
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    pageError.value = 'El PDF no puede superar 10 MB.'
+    input.value = ''
+    return
+  }
+
+  uploadingDocument.value = true
+  pageError.value = ''
+  try {
+    const response = await fetch(`/api/pets/${pet.value.id}/documents`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/pdf',
+        'x-file-name': encodeURIComponent(file.name),
+      },
+      body: file,
+    })
+    const json = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(json.error ?? 'No se pudo subir el PDF')
+    await loadPet()
+  } catch (error) {
+    pageError.value = error.message
+  } finally {
+    uploadingDocument.value = false
+    input.value = ''
+  }
+}
+
+async function renameDocument(document) {
+  const nombre = window.prompt('Nombre del documento:', document.nombre)
+  if (nombre === null || !nombre.trim() || nombre.trim() === document.nombre) return
+  pageError.value = ''
+  try {
+    await fetchJson(`/api/pets/documents/${document.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ nombre: nombre.trim() }),
+    })
+    await loadPet()
+  } catch (error) {
+    pageError.value = error.message
+  }
+}
+
+async function deleteDocument(document) {
+  if (!window.confirm(`¿Eliminar el documento "${document.nombre}"? Esta acción no se puede deshacer.`)) return
+  pageError.value = ''
+  try {
+    await fetchJson(`/api/pets/documents/${document.id}`, { method: 'DELETE' })
+    if (previewDocument.value?.id === document.id) previewDocument.value = null
+    await loadPet()
+  } catch (error) {
+    pageError.value = error.message
+  }
+}
+
+function formatFileSize(value) {
+  const bytes = Number(value ?? 0)
+  if (!bytes) return ''
+  return bytes >= 1024 * 1024
+    ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+    : `${Math.round(bytes / 1024)} KB`
+}
+
 function vaccineSubtitle(vaccine) {
   const parts = [`Aplicada ${formatDate(vaccine.fecha)}`]
   if (vaccine.proxima_dosis) parts.push(`próxima ${formatDate(vaccine.proxima_dosis)}`)
@@ -319,6 +397,34 @@ onMounted(loadPet)
       </section>
 
       <section class="mt-6">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h3 class="text-lg font-bold text-zinc-950 dark:text-white">📄 Documentos</h3>
+          <label class="flex h-9 cursor-pointer items-center rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-500">
+            {{ uploadingDocument ? 'Subiendo…' : '📎 Subir PDF' }}
+            <input type="file" accept="application/pdf" class="hidden" :disabled="uploadingDocument" @change="uploadDocument">
+          </label>
+        </div>
+        <div v-if="!documents.length" class="mt-3 rounded-lg border border-dashed border-zinc-300 p-8 text-center text-sm text-zinc-500 dark:border-zinc-700">
+          Sube aquí el carnet de vacunas, historia clínica, certificados… (PDF, máx. 10 MB)
+        </div>
+        <div v-else class="mt-3 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+          <div v-for="doc in documents" :key="doc.id" class="flex flex-wrap items-center gap-3 border-b border-zinc-100 px-4 py-2.5 last:border-b-0 dark:border-zinc-800">
+            <span class="text-lg">📄</span>
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{{ doc.nombre }}</p>
+              <p class="truncate text-xs text-zinc-500">{{ doc.file_name }} · {{ formatFileSize(doc.file_size) }}</p>
+            </div>
+            <div class="flex shrink-0 flex-wrap gap-2">
+              <button type="button" class="h-8 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-500" @click="previewDocument = doc">Ver</button>
+              <a :href="`/api/pets/documents/${doc.id}/file?download=1`" class="flex h-8 items-center rounded-lg border border-zinc-200 px-3 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800">Descargar</a>
+              <button type="button" class="h-8 rounded-lg border border-zinc-200 px-3 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800" @click="renameDocument(doc)">Renombrar</button>
+              <button type="button" class="h-8 rounded-lg px-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950" @click="deleteDocument(doc)">Quitar</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="mt-6">
         <div class="flex items-center justify-between">
           <h3 class="text-lg font-bold text-zinc-950 dark:text-white">🧾 Gastos de {{ pet.nombre }}</h3>
           <span class="text-xs text-zinc-400">Sincronizado con Gastos e Ingresos</span>
@@ -339,6 +445,21 @@ onMounted(loadPet)
         </div>
       </section>
     </template>
+
+    <!-- Visor PDF -->
+    <div v-if="previewDocument" class="fixed inset-0 z-50 flex flex-col bg-zinc-950/90 p-3 sm:p-6">
+      <div class="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 rounded-t-lg bg-zinc-900 px-4 py-3 text-white">
+        <div class="min-w-0">
+          <p class="truncate text-sm font-semibold">{{ previewDocument.nombre }} · {{ pet?.nombre }}</p>
+          <p class="truncate text-xs text-zinc-400">{{ previewDocument.file_name }}</p>
+        </div>
+        <div class="flex shrink-0 gap-2">
+          <a :href="`/api/pets/documents/${previewDocument.id}/file?download=1`" class="flex h-9 items-center rounded-lg bg-emerald-600 px-3 text-xs font-semibold hover:bg-emerald-500">Descargar</a>
+          <button type="button" class="h-9 rounded-lg bg-zinc-700 px-3 text-sm font-semibold hover:bg-zinc-600" @click="previewDocument = null">Cerrar</button>
+        </div>
+      </div>
+      <iframe :src="`/api/pets/documents/${previewDocument.id}/file`" :title="`Documento ${previewDocument.nombre}`" class="mx-auto h-full w-full max-w-6xl rounded-b-lg bg-white" />
+    </div>
 
     <!-- Modal perfil -->
     <div v-if="petEditorOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/50 px-4 backdrop-blur-sm" @click.self="petEditorOpen = false">

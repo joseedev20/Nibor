@@ -937,6 +937,41 @@ async function run() {
   const blockedPet = await expectFailure(`/pets/${smokePet.id}`, { method: 'DELETE' })
   if (!String(blockedPet.error ?? '').includes('gastos')) throw new Error('Mascota con gastos no bloqueo el borrado')
 
+  const petPdfBytes = new Uint8Array([37, 80, 68, 70, 45, 49, 46, 52, 10, 37, 83, 77, 79, 75, 69, 10])
+  const petDocResponse = await fetch(`${baseUrl}/pets/${smokePet.id}/documents`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/pdf',
+      'x-file-name': encodeURIComponent('smoke-carnet.pdf'),
+    },
+    body: petPdfBytes,
+  })
+  const petDocJson = await petDocResponse.json()
+  if (!petDocResponse.ok || petDocJson.data.nombre !== 'smoke-carnet' || petDocJson.data.file_name !== 'smoke-carnet.pdf') {
+    throw new Error(`Upload documento mascota fallo: ${JSON.stringify(petDocJson)}`)
+  }
+  const petDocId = petDocJson.data.id
+
+  const petDocDownload = await fetch(`${baseUrl}/pets/documents/${petDocId}/file`)
+  const petDocBuffer = await petDocDownload.arrayBuffer()
+  if (
+    !petDocDownload.ok
+    || petDocBuffer.byteLength !== petPdfBytes.byteLength
+    || !String(petDocDownload.headers.get('content-disposition')).startsWith('inline')
+    || !String(petDocDownload.headers.get('cache-control')).includes('no-store')
+  ) {
+    throw new Error('Documento de mascota no hizo roundtrip binario inline con no-store')
+  }
+
+  const renamedPetDoc = await put(`/pets/documents/${petDocId}`, { nombre: 'Smoke carnet renombrado' })
+  if (renamedPetDoc.nombre !== 'Smoke carnet renombrado') throw new Error('No se renombro el documento de mascota')
+
+  const petDetailWithDoc = await request(`/pets/${smokePet.id}`)
+  if (!petDetailWithDoc.documents.some((entry) => entry.id === petDocId)) {
+    throw new Error('El detalle de la mascota no lista el documento subido')
+  }
+  await del(`/pets/documents/${petDocId}`)
+
   const recurringReminder = await post('/reminders', {
     titulo: `Smoke recordatorio ${Date.now()}`,
     frecuencia_dias: 2,

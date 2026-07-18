@@ -211,8 +211,10 @@ reminders        (id, titulo, notas, frecuencia_dias NULL=único, repetir_horas 
                  -- migración 0030, o el general recordatorios_repetir_horas, seed 0029)
 pets             (id, nombre, especie 'perro'|'gato'|'otro', raza, sexo, fecha_nacimiento, color, microchip, notas, activa)
 pet_vaccines     (id, pet_id, nombre, fecha, proxima_dosis, veterinaria, notas)
+pet_documents    (id, pet_id, nombre, file_key, file_name, file_size)
                  -- agregado en migración 0027 para Nibor Bansky; movements.pet_id enlaza gastos
                  -- y la categoría seed 'Mascotas' 🐾 sincroniza los registrados desde Gastos
+                 -- pet_documents agregado en migración 0031: PDFs privados en R2 (`pets/{id}/docs/…`)
 home_administration_items (id, period_id, concepto, saldo_anterior, cuota_mes, nuevo_saldo, aplica_descuento, orden)
                  -- agregado en migración 0024 para Nibor Casa; totales y estado se calculan SOLO en backend
                  -- aplica_descuento agregado en migración 0025: el % de descuento del periodo
@@ -245,7 +247,7 @@ home_administration_items (id, period_id, concepto, saldo_anterior, cuota_mes, n
 - `GET /api/notifications` lista notificaciones y `no_leidas`; acepta `fecha=YYYY-MM-DD` para un día exacto o `desde=YYYY-MM-DD` para un rango reciente. Subrutas: `/run`, `/:id/read`, `/read-all`, `/settings`, `/test-push`. `POST /api/notifications/run` acepta `hora`/`minuto`/`fecha` opcionales para smoke y devuelve `push_enviadas`, `push_retenidas`, `en_silencio` y `pausado`.
 - `GET/POST/PUT/DELETE /api/family` administra familiares; `POST/GET/DELETE /api/family/:id/file` guarda, muestra/descarga y elimina el PDF privado en R2.
 - `/api/reminders` administra Recordatorios: `GET/POST/PUT/DELETE /` con estado backend (`hoy`, `vencido`, `programado`, `pausado`, `completado`) y `POST /:id/complete` (con frecuencia reprograma `proxima_fecha`; único queda completado). La regla `recordatorios` del motor de notificaciones usa las claves `regla/push/prioridad/sonido_recordatorios`.
-- `/api/pets` administra Nibor Bansky: `GET/POST/PUT/DELETE /` para mascotas (delete bloqueado con gastos), `GET /:id` con vacunas (estado backend) y gastos sincronizados (`pet_id` O categoría `Mascotas`) + resumen total/año/mes, `POST /:id/vaccines`, `PUT/DELETE /vaccines/:id` y `POST /:id/gastos` que inserta movements normales visibles en Gastos.
+- `/api/pets` administra Nibor Bansky: `GET/POST/PUT/DELETE /` para mascotas (delete bloqueado con gastos; limpia R2 en cascada), `GET /:id` con vacunas (estado backend), documentos y gastos sincronizados (`pet_id` O categoría `Mascotas`) + resumen total/año/mes, `POST /:id/vaccines`, `PUT/DELETE /vaccines/:id`, `POST /:id/gastos` que inserta movements normales visibles en Gastos, y documentos PDF en R2: `POST /:id/documents` (binario + `x-file-name`), `GET /documents/:id/file` (inline/download, `no-store`), `PUT /documents/:id` (renombrar) y `DELETE /documents/:id`.
 - `/api/home` administra Nibor Casa: `GET/POST/PUT/DELETE /properties` (delete bloqueado con historial), `GET /periods?property_id=&anio=&estado=` (periodos enriquecidos con totales/estado + `resumen` + `anios`), `GET /periods/template` (sugiere el mes siguiente arrastrando conceptos, saldo anterior —0 si el último mes quedó pagado—, descuento %/valor y fechas límite/vencimiento corridas al mismo día del mes), `POST/PUT/DELETE /periods/:id`, `PUT/DELETE /periods/:id/payment` para el pago separado y `POST/GET/DELETE /periods/:id/file` para el PDF único del mes en R2 con `no-store`. El backend deriva `descuento_valor_calculado` y `total_con_descuento_calculado` cuando solo hay porcentaje; los valores digitados manualmente siempre tienen prioridad.
 
 ## 4. Fases de trabajo
