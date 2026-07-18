@@ -1097,6 +1097,17 @@ async function run() {
   const completedOnce = await post(`/reminders/${onceReminder.id}/complete`, {})
   if (completedOnce.estado !== 'completado') throw new Error('Recordatorio unico no quedo completado')
 
+  await expectFailure('/widget/habits')
+  await expectFailure('/widget/habits?token=token-incorrecto')
+  const widgetHabits = await request('/widget/habits?token=smoke-widget-token')
+  if (typeof widgetHabits.text !== 'string' || !widgetHabits.resumen || !Array.isArray(widgetHabits.pendientes)) {
+    throw new Error(`Widget de habitos no devolvio el shape esperado: ${JSON.stringify(widgetHabits)}`)
+  }
+  const widgetUrl = await request('/widget/url')
+  if (!String(widgetUrl.habits_url).includes('token=smoke-widget-token')) {
+    throw new Error('El endpoint /widget/url no entrego la URL con token')
+  }
+
   const vehicle = await post('/vehicles', {
     nombre: `Smoke vehiculo ${Date.now()}`,
     tipo: 'carro',
@@ -1372,7 +1383,7 @@ async function run() {
 
   await cleanupSmokeData(platform.id)
 
-  console.log('Endpoints OK: platforms, categories, cards, snapshots, movements, subscriptions/apply, summary, close-month, goals, music, knowledge, habits, loans, salud, events, vehicles, family, home, pets, reminders, notifications')
+  console.log('Endpoints OK: platforms, categories, cards, snapshots, movements, subscriptions/apply, summary, close-month, goals, music, knowledge, habits, loans, salud, events, vehicles, family, home, pets, reminders, widget, notifications')
 }
 
 run().catch((error) => {

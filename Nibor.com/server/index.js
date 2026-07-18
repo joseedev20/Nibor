@@ -15,6 +15,7 @@ import movements from './routes/movements.js'
 import music from './routes/music.js'
 import notifications, { runChecks } from './routes/notifications.js'
 import pets from './routes/pets.js'
+import widget from './routes/widget.js'
 import platforms from './routes/platforms.js'
 import reminders from './routes/reminders.js'
 import snapshots from './routes/snapshots.js'
@@ -48,6 +49,7 @@ app.route('/music', music)
 app.route('/notifications', notifications)
 app.route('/pets', pets)
 app.route('/reminders', reminders)
+app.route('/widget', widget)
 app.route('/summary', summary)
 app.route('/close-month', closeMonth)
 

@@ -493,12 +493,10 @@ habits.get('/', async (c) => {
   })
 })
 
-habits.get('/today', async (c) => {
-  const date = c.req.query('date') ?? todayBogota()
-  if (!isValidDate(date)) return fail(c, 'La fecha debe tener formato YYYY-MM-DD')
-
+// Reutilizable por la ruta /today y por la API de widgets (widget.js).
+export async function buildToday(db, date = todayBogota()) {
   const rows = await all(
-    c.env.DB,
+    db,
     `SELECT h.id, h.old_id, h.name, h.description, h.emoji, h.color, h.sort_index, h.target_per_day,
             h.is_active, h.start_date, h.end_date, h.created_at, h.updated_at,
             COALESCE(d.defer_rank, NULL) AS defer_rank,
@@ -520,7 +518,7 @@ habits.get('/today', async (c) => {
     date,
     date,
   )
-  const enriched = await enrichHabits(c.env.DB, rows)
+  const enriched = await enrichHabits(db, rows)
   const todayRows = []
   let planned = 0
   let done = 0
@@ -548,7 +546,7 @@ habits.get('/today', async (c) => {
     return Number(a.sort_index) - Number(b.sort_index) || Number(a.id) - Number(b.id)
   })
 
-  return ok(c, {
+  return {
     date,
     habits: todayRows,
     summary: {
@@ -557,7 +555,13 @@ habits.get('/today', async (c) => {
       pending_today: todayRows.length,
       percent_today: clampPercent(done, planned),
     },
-  })
+  }
+}
+
+habits.get('/today', async (c) => {
+  const date = c.req.query('date') ?? todayBogota()
+  if (!isValidDate(date)) return fail(c, 'La fecha debe tener formato YYYY-MM-DD')
+  return ok(c, await buildToday(c.env.DB, date))
 })
 
 habits.get('/progress', async (c) => {

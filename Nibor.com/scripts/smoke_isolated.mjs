@@ -111,6 +111,8 @@ try {
     'warn',
     '--var',
     'CALENDAR_FEED_TOKEN:smoke-calendar-token',
+    '--var',
+    'WIDGET_TOKEN:smoke-widget-token',
     '--show-interactive-dev-session=false',
   ], {
     ...commandOptions,
