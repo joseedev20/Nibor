@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { formatDate } from '../utils/format.js'
 
 const reminders = ref([])
@@ -9,6 +9,20 @@ const saving = ref(false)
 const editorError = ref('')
 const editorOpen = ref(false)
 const showCompleted = ref(false)
+
+const REPETICIONES = [
+  { value: '1', label: 'cada hora' },
+  { value: '2', label: 'cada 2 horas' },
+  { value: '3', label: 'cada 3 horas' },
+  { value: '4', label: 'cada 4 horas' },
+  { value: '6', label: 'cada 6 horas' },
+  { value: '8', label: 'cada 8 horas' },
+  { value: '12', label: 'cada 12 horas' },
+  { value: '24', label: 'una vez al día' },
+]
+const repeatHours = ref('4')
+const repeatSaved = ref(false)
+let repeatSavedTimer = null
 
 const FRECUENCIAS = [
   { value: null, label: 'Una sola vez' },
@@ -42,6 +56,37 @@ async function fetchJson(path, options = {}) {
   const json = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(json.error ?? 'No se pudo completar la solicitud')
   return json.data
+}
+
+async function loadRepeatSetting() {
+  try {
+    const data = await fetchJson('/api/notifications/settings')
+    const value = String(data.recordatorios_repetir_horas ?? '4')
+    repeatHours.value = REPETICIONES.some((option) => option.value === value) ? value : '4'
+  } catch {
+    // el selector se queda en el valor por defecto
+  }
+}
+
+async function saveRepeatSetting(event) {
+  const value = event.target.value
+  const previous = repeatHours.value
+  repeatHours.value = value
+  pageError.value = ''
+  try {
+    await fetchJson('/api/notifications/settings', {
+      method: 'PUT',
+      body: JSON.stringify({ recordatorios_repetir_horas: value }),
+    })
+    repeatSaved.value = true
+    window.clearTimeout(repeatSavedTimer)
+    repeatSavedTimer = window.setTimeout(() => {
+      repeatSaved.value = false
+    }, 2000)
+  } catch (error) {
+    repeatHours.value = previous
+    pageError.value = error.message
+  }
 }
 
 async function loadReminders() {
@@ -155,7 +200,11 @@ async function toggleActive(reminder) {
   }
 }
 
-onMounted(loadReminders)
+onMounted(() => {
+  loadReminders()
+  loadRepeatSetting()
+})
+onBeforeUnmount(() => window.clearTimeout(repeatSavedTimer))
 </script>
 
 <template>
@@ -167,6 +216,13 @@ onMounted(loadReminders)
         <p class="mt-2 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">
           Cada recordatorio te avisa por notificación (y push si lo tienes activo) y te insiste varias veces al día hasta que lo marques hecho.
         </p>
+        <label class="mt-3 flex flex-wrap items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300">
+          <span>🔔 Los pendientes avisan</span>
+          <select :value="repeatHours" class="h-9 rounded-lg border border-zinc-200 bg-white px-2 text-sm text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100" @change="saveRepeatSetting">
+            <option v-for="option in REPETICIONES" :key="option.value" :value="option.value">{{ option.label }}</option>
+          </select>
+          <span v-if="repeatSaved" class="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Guardado ✓</span>
+        </label>
       </div>
       <button type="button" class="h-10 shrink-0 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-500" @click="openEditor()">
         + Nuevo recordatorio
