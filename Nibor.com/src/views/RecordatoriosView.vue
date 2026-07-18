@@ -165,7 +165,7 @@ onMounted(loadReminders)
         <p class="text-sm font-semibold uppercase text-emerald-700 dark:text-emerald-400">Nibor Recordatorios</p>
         <h1 class="mt-1 text-3xl font-bold tracking-tight text-zinc-950 dark:text-white">Que no se te pase nada</h1>
         <p class="mt-2 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">
-          Cada recordatorio te avisa por notificación (y push si lo tienes activo) e insiste a diario hasta que lo marques hecho.
+          Cada recordatorio te avisa por notificación (y push si lo tienes activo) y te insiste varias veces al día hasta que lo marques hecho.
         </p>
       </div>
       <button type="button" class="h-10 shrink-0 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-500" @click="openEditor()">
@@ -289,7 +289,7 @@ onMounted(loadReminders)
               días
             </label>
             <p class="text-xs text-zinc-400">
-              {{ form.frecuencia_dias === null ? 'Te avisará todos los días hasta que lo marques hecho.' : 'Al marcarlo hecho se programa solo para la próxima vez.' }}
+              {{ form.frecuencia_dias === null ? 'Te avisará varias veces al día hasta que lo marques hecho.' : 'Al marcarlo hecho se programa solo para la próxima vez y deja de avisar por hoy.' }}
             </p>
           </div>
 

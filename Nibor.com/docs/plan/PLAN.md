@@ -131,7 +131,7 @@ Nibor.com es una app madre. Finanzas queda como el primer módulo productivo; lo
    - MVP en `/bansky`, con API `/api/pets`
 19. **Recordatorios**:
    - Tareas por recordar con frecuencia configurable: una sola vez o cada N días (diario, cada 2 días, semanal, quincenal, mensual, personalizado), con hora opcional
-   - Integrados al centro de notificaciones como regla `recordatorios` (in-app + push por Pushover con prioridad/sonido configurables): avisan el día programado e insisten a diario mientras estén vencidos
+   - Integrados al centro de notificaciones como regla `recordatorios` (in-app + push por Pushover con prioridad/sonido configurables): avisan el día programado y repiten varias veces al día (`recordatorios_repetir_horas`, default cada 4 h, fuera del horario de silencio) mientras no se marquen hechos, incluso en días siguientes si quedan vencidos
    - Marcar "hecho" programa la siguiente vez si hay frecuencia, o completa el recordatorio si era único; también se pueden pausar/reanudar
    - MVP en `/recordatorios`, con API `/api/reminders`
 
@@ -205,8 +205,9 @@ home_properties  (id, nombre, notas, activa, created_at, updated_at)
 home_administration_periods (id, property_id, anio, mes, fecha_emision, numero_cuenta, fecha_limite_descuento, fecha_vencimiento, descuento_pct, descuento_valor, total_con_descuento, fecha_pago, valor_pagado, mora_cobrada, notas, file_key, file_name, file_size, created_at, updated_at)
                  -- UNIQUE(property_id, anio, mes); un solo PDF por mes (cuenta + comprobante unidos) en R2
 reminders        (id, titulo, notas, frecuencia_dias NULL=único, proxima_fecha, hora, activo, completado_en)
-                 -- agregado en migración 0028 para Nibor Recordatorios; la notificación diaria
-                 -- la genera la regla 'recordatorios' del motor con dedupe `rec:{id}:{fecha}`
+                 -- agregado en migración 0028 para Nibor Recordatorios; los avisos los genera
+                 -- la regla 'recordatorios' del motor varias veces al día con dedupe
+                 -- `rec:{id}:{fecha}:{franja}` (franja = recordatorios_repetir_horas, seed 0029)
 pets             (id, nombre, especie 'perro'|'gato'|'otro', raza, sexo, fecha_nacimiento, color, microchip, notas, activa)
 pet_vaccines     (id, pet_id, nombre, fecha, proxima_dosis, veterinaria, notas)
                  -- agregado en migración 0027 para Nibor Bansky; movements.pet_id enlaza gastos

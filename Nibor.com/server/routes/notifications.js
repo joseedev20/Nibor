@@ -15,6 +15,7 @@ const SETTING_KEYS = new Set([
   'prioridad_suscripciones', 'prioridad_habitos', 'prioridad_vehiculos', 'prioridad_eventos', 'prioridad_recordatorios',
   'sonido_suscripciones', 'sonido_habitos', 'sonido_vehiculos', 'sonido_eventos', 'sonido_recordatorios',
   'silencio_inicio', 'silencio_fin', 'pausado_hasta', 'resumen_diario', 'vencida_recordar_cada',
+  'recordatorios_repetir_horas',
   'habitos_inicio', 'habitos_fin', 'habitos_cada_min', 'habitos_franjas',
 ])
 
@@ -299,10 +300,17 @@ async function checkEventos(db, settings, hoy, diasAntes) {
   return nuevas
 }
 
-// Recordatorios: avisa el día programado y sigue insistiendo a diario
-// (dedupe por fecha) mientras no se marque como hecho. Si tiene hora,
-// espera a que llegue esa hora del día para avisar.
+// Recordatorios: avisa el día programado y, mientras no se marque hecho,
+// insiste VARIAS VECES AL DÍA (una por franja de `recordatorios_repetir_horas`
+// horas, dedupe por franja) y sigue así los días siguientes si queda vencido.
+// Si tiene hora, el día programado espera a esa hora. En horario de silencio
+// no se generan avisos para no acumular de madrugada.
 async function checkRecordatorios(db, settings, hoy, hora, minuto) {
+  if (inQuietHours(settings, hora)) return 0
+  const repetir = Number(settings.recordatorios_repetir_horas ?? 4)
+  const repetirHoras = Number.isInteger(repetir) && repetir >= 1 && repetir <= 24 ? repetir : 4
+  const slot = Math.floor(hora / repetirHoras) * repetirHoras
+
   const rows = await all(
     db,
     `SELECT id, titulo, notas, frecuencia_dias, proxima_fecha, hora
@@ -329,7 +337,7 @@ async function checkRecordatorios(db, settings, hoy, hora, minuto) {
       titulo,
       mensaje: [reminder.notas, frecuencia].filter(Boolean).join(' · '),
       fecha: hoy,
-      dedupe: `rec:${reminder.id}:${hoy}`,
+      dedupe: `rec:${reminder.id}:${hoy}:${String(slot).padStart(2, '0')}`,
     })) nuevas++
   }
   return nuevas

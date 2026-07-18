@@ -963,7 +963,7 @@ async function run() {
     throw new Error('Recordatorio unico smoke no quedo vencido')
   }
 
-  const reminderRun = await post('/notifications/run', { fecha: '2000-01-05' })
+  const reminderRun = await post('/notifications/run', { fecha: '2000-01-05', hora: 10, minuto: 0 })
   if (!Number.isInteger(reminderRun.nuevas) || reminderRun.nuevas < 1) {
     throw new Error(`El run de notificaciones no genero el aviso del recordatorio: ${JSON.stringify(reminderRun)}`)
   }

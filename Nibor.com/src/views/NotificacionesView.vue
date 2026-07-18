@@ -188,6 +188,7 @@ function emptySettings() {
     regla_vehiculos: true,
     regla_eventos: true,
     regla_recordatorios: true,
+    recordatorios_repetir_horas: '4',
     vehiculos_umbrales: '180,90,30,15,8,3,0',
     eventos_dias_antes: '1',
     habitos_hora: '18',
@@ -227,6 +228,7 @@ function normalizeSettings(data = {}) {
     regla_vehiculos: data.regla_vehiculos !== '0',
     regla_eventos: data.regla_eventos !== '0',
     regla_recordatorios: data.regla_recordatorios !== '0',
+    recordatorios_repetir_horas: ['1', '2', '3', '4', '6', '8', '12', '24'].includes(String(data.recordatorios_repetir_horas)) ? String(data.recordatorios_repetir_horas) : '4',
     vehiculos_umbrales: data.vehiculos_umbrales ?? '180,90,30,15,8,3,0',
     eventos_dias_antes: data.eventos_dias_antes ?? '1',
     habitos_hora: data.habitos_inicio ?? data.habitos_hora ?? '18',
@@ -281,6 +283,7 @@ function settingsPayload() {
     regla_vehiculos: settings.value.regla_vehiculos ? '1' : '0',
     regla_eventos: settings.value.regla_eventos ? '1' : '0',
     regla_recordatorios: settings.value.regla_recordatorios ? '1' : '0',
+    recordatorios_repetir_horas: String(settings.value.recordatorios_repetir_horas),
     vehiculos_umbrales: settings.value.vehiculos_umbrales.trim(),
     eventos_dias_antes: String(settings.value.eventos_dias_antes).trim(),
     habitos_hora: String(settings.value.habitos_inicio).trim(),
@@ -659,6 +662,19 @@ onMounted(() => loadAll({ run: true }))
             <label class="grid gap-1 text-sm">
               <span class="font-medium text-zinc-700 dark:text-zinc-300">Vehículos</span>
               <input v-model="settings.vehiculos_umbrales" type="text" placeholder="180,90,30,15,8,3,0" class="h-10 rounded-lg border border-zinc-200 bg-white px-3 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950">
+            </label>
+            <label class="grid gap-1 text-sm">
+              <span class="font-medium text-zinc-700 dark:text-zinc-300">Recordatorios pendientes repiten</span>
+              <select v-model="settings.recordatorios_repetir_horas" class="h-10 rounded-lg border border-zinc-200 bg-white px-3 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950">
+                <option value="1">Cada hora</option>
+                <option value="2">Cada 2 horas</option>
+                <option value="3">Cada 3 horas</option>
+                <option value="4">Cada 4 horas</option>
+                <option value="6">Cada 6 horas</option>
+                <option value="8">Cada 8 horas</option>
+                <option value="12">Cada 12 horas</option>
+                <option value="24">Una vez al día</option>
+              </select>
             </label>
           </div>
         </article>
