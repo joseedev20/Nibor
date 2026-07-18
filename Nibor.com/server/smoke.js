@@ -991,8 +991,22 @@ async function run() {
     monto: 20000,
   })
 
+  const editedPetGasto = await put(`/pets/gastos/${petGasto.id}`, {
+    concepto: 'Comida editada smoke',
+    fecha: `${smokeYear}-01-09`,
+    monto: 60000,
+  })
+  if (
+    editedPetGasto.monto !== 60000
+    || editedPetGasto.fecha !== `${smokeYear}-01-09`
+    || !String(editedPetGasto.descripcion).includes('Comida editada smoke')
+    || !String(editedPetGasto.descripcion).startsWith(smokePet.nombre)
+  ) {
+    throw new Error(`Editar gasto de mascota fallo: ${JSON.stringify(editedPetGasto)}`)
+  }
+
   const petDetail = await request(`/pets/${smokePet.id}`)
-  if (petDetail.gastos.length !== 2 || petDetail.gastos_resumen.total !== 70000) {
+  if (petDetail.gastos.length !== 2 || petDetail.gastos_resumen.total !== 80000) {
     throw new Error(`Sincronizacion de gastos de mascota no cuadra: ${JSON.stringify(petDetail.gastos_resumen)}`)
   }
   if (petDetail.pet.edad === null) throw new Error('La edad de la mascota no se calculo en backend')

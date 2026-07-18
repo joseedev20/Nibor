@@ -45,7 +45,7 @@ const petForm = reactive({
 })
 
 const vaccineForm = reactive({ id: null, nombre: '', fecha: '', proxima_dosis: '', veterinaria: '', notas: '' })
-const gastoForm = reactive({ concepto: '', fecha: '', monto: '' })
+const gastoForm = reactive({ id: null, concepto: '', fecha: '', monto: '' })
 
 const especieEmoji = computed(() => ESPECIES.find((item) => item.value === pet.value?.especie)?.emoji ?? '🐾')
 
@@ -188,10 +188,15 @@ async function deleteVaccine() {
 
 // ── Gastos (sincronizados con Gastos e Ingresos) ─────────────────────────────
 
-function openGastoEditor() {
-  gastoForm.concepto = ''
-  gastoForm.fecha = new Date().toISOString().slice(0, 10)
-  gastoForm.monto = ''
+function openGastoEditor(gasto = null) {
+  gastoForm.id = gasto?.id ?? null
+  // Al editar se muestra el concepto sin el prefijo del nombre de la mascota
+  const prefix = `${pet.value?.nombre}: `
+  gastoForm.concepto = gasto
+    ? (String(gasto.descripcion).startsWith(prefix) ? String(gasto.descripcion).slice(prefix.length) : gasto.descripcion)
+    : ''
+  gastoForm.fecha = gasto?.fecha ?? new Date().toISOString().slice(0, 10)
+  gastoForm.monto = gasto?.monto ?? ''
   editorError.value = ''
   gastoEditorOpen.value = true
 }
@@ -200,8 +205,8 @@ async function saveGasto() {
   saving.value = true
   editorError.value = ''
   try {
-    await fetchJson(`/api/pets/${pet.value.id}/gastos`, {
-      method: 'POST',
+    await fetchJson(gastoForm.id ? `/api/pets/gastos/${gastoForm.id}` : `/api/pets/${pet.value.id}/gastos`, {
+      method: gastoForm.id ? 'PUT' : 'POST',
       body: JSON.stringify({ concepto: gastoForm.concepto, fecha: gastoForm.fecha, monto: gastoForm.monto }),
     })
     gastoEditorOpen.value = false
@@ -435,10 +440,10 @@ onMounted(loadPet)
         <div v-else class="mt-3 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
           <div v-for="gasto in gastos" :key="gasto.id" class="flex items-center gap-3 border-b border-zinc-100 px-4 py-2.5 last:border-b-0 dark:border-zinc-800">
             <span class="text-lg">{{ gasto.categoria_icono ?? '🐾' }}</span>
-            <div class="min-w-0 flex-1">
+            <button type="button" class="min-w-0 flex-1 text-left transition hover:opacity-70" :title="`Editar ${gasto.descripcion}`" @click="openGastoEditor(gasto)">
               <p class="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{{ gasto.descripcion }}</p>
-              <p class="text-xs text-zinc-500">{{ formatDate(gasto.fecha) }}<template v-if="gasto.categoria_nombre"> · {{ gasto.categoria_nombre }}</template></p>
-            </div>
+              <p class="text-xs text-zinc-500">{{ formatDate(gasto.fecha) }}<template v-if="gasto.categoria_nombre"> · {{ gasto.categoria_nombre }}</template> · toca para editar</p>
+            </button>
             <p class="shrink-0 text-sm font-semibold tabular-nums text-zinc-900 dark:text-zinc-100">{{ formatCOP(gasto.monto) }}</p>
             <button type="button" class="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950" :aria-label="`Eliminar ${gasto.descripcion}`" @click="deleteGasto(gasto)">×</button>
           </div>
@@ -567,7 +572,7 @@ onMounted(loadPet)
     <div v-if="gastoEditorOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/50 px-4 backdrop-blur-sm" @click.self="gastoEditorOpen = false">
       <div class="w-full max-w-md rounded-lg border border-zinc-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
         <div class="border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
-          <h2 class="font-semibold text-zinc-950 dark:text-white">Nuevo gasto de {{ pet?.nombre }}</h2>
+          <h2 class="font-semibold text-zinc-950 dark:text-white">{{ gastoForm.id ? 'Editar gasto' : `Nuevo gasto de ${pet?.nombre}` }}</h2>
         </div>
         <form class="grid gap-4 p-5" @submit.prevent="saveGasto">
           <div class="flex flex-wrap gap-1.5">
@@ -598,7 +603,7 @@ onMounted(loadPet)
               <input v-model.number="gastoForm.monto" required type="number" step="0.01" min="0.01" class="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-right tabular-nums text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
             </label>
           </div>
-          <p class="rounded-lg bg-zinc-50 px-3 py-2 text-xs text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400">Se guardará también en Gastos e Ingresos con la categoría 🐾 Mascotas.</p>
+          <p class="rounded-lg bg-zinc-50 px-3 py-2 text-xs text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400">{{ gastoForm.id ? 'El cambio se refleja también en Gastos e Ingresos.' : 'Se guardará también en Gastos e Ingresos con la categoría 🐾 Mascotas.' }}</p>
           <div v-if="editorError" class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300">{{ editorError }}</div>
           <div class="flex justify-end gap-2 pt-1">
             <button type="button" class="h-10 rounded-lg border border-zinc-200 px-4 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800" @click="gastoEditorOpen = false">Cancelar</button>

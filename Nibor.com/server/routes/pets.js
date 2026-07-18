@@ -408,4 +408,41 @@ pets.post('/:id/gastos', async (c) => {
   return ok(c, await first(db, 'SELECT * FROM movements WHERE id = ?', meta.last_row_id), 201)
 })
 
+// Editar un gasto listado en la mascota. Solo toca fecha/monto/descripción;
+// conserva pet_id, categoría y subscription_id. Si el movimiento está
+// vinculado a la mascota, la descripción mantiene el prefijo con su nombre.
+pets.put('/gastos/:movementId', async (c) => {
+  const db = c.env.DB
+  const movementId = toInteger(c.req.param('movementId'))
+  if (!Number.isInteger(movementId)) return fail(c, 'ID inválido')
+  const movement = await first(db, `SELECT * FROM movements WHERE id = ? AND tipo = 'gasto'`, movementId)
+  if (!movement) return fail(c, 'Gasto no encontrado', 404)
+  const body = await readJson(c)
+  if (!body) return fail(c, 'Body JSON inválido')
+
+  const concepto = cleanText(body.concepto)
+  const fecha = cleanText(body.fecha, movement.fecha)
+  const monto = toNumber(body.monto, movement.monto)
+  if (!concepto) return fail(c, 'El concepto es obligatorio')
+  if (concepto.length > 120) return fail(c, 'El concepto no puede superar 120 caracteres')
+  if (!isNonNegative(monto) || monto <= 0) return fail(c, 'El monto debe ser mayor a 0')
+  if (!isValidDate(fecha)) return fail(c, 'La fecha debe ser una fecha real YYYY-MM-DD')
+
+  let descripcion = concepto
+  if (movement.pet_id) {
+    const pet = await first(db, 'SELECT nombre FROM pets WHERE id = ?', movement.pet_id)
+    if (pet) descripcion = `${pet.nombre}: ${concepto}`
+  }
+
+  await run(
+    db,
+    'UPDATE movements SET fecha = ?, monto = ?, descripcion = ? WHERE id = ?',
+    fecha,
+    monto,
+    descripcion,
+    movementId,
+  )
+  return ok(c, await first(db, 'SELECT * FROM movements WHERE id = ?', movementId))
+})
+
 export default pets
