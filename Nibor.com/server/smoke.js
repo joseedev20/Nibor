@@ -1120,6 +1120,8 @@ async function run() {
   }
   const widgetCheckAgain = await post(`/widget/habits?token=smoke-widget-token`, { id: widgetHabit.id })
   if (widgetCheckAgain.already !== true) throw new Error('POST del widget no fue idempotente al repetir')
+  const widgetCheckByName = await post(`/widget/habits?token=smoke-widget-token`, { nombre: widgetHabit.name })
+  if (widgetCheckByName.already !== true) throw new Error('POST del widget por nombre no encontro el habito')
   const widgetBadId = await expectFailure(`/widget/habits?token=smoke-widget-token`, {
     method: 'POST',
     body: JSON.stringify({ id: 999999 }),

@@ -57,6 +57,9 @@ widget.get('/habits', async (c) => {
     text,
     resumen: data.summary,
     pendientes,
+    // Lista plana para "Elegir de la lista" en Atajos (se ve limpia y el
+    // nombre elegido se puede mandar tal cual al POST como {nombre}).
+    pendientes_nombres: pendientes.map((habit) => habit.name),
   })
 })
 
@@ -65,8 +68,19 @@ widget.get('/habits', async (c) => {
 // Access sin abrir rutas adicionales.
 widget.post('/habits', async (c) => {
   const body = (await readJson(c)) ?? {}
-  const id = toInteger(body.id ?? c.req.query('id'))
-  if (!Number.isInteger(id)) return fail(c, 'Falta el id del hábito')
+  let id = toInteger(body.id ?? c.req.query('id'))
+
+  // También acepta {nombre} para que el Atajo mande directo lo elegido
+  if (!Number.isInteger(id)) {
+    const nombre = String(body.nombre ?? c.req.query('nombre') ?? '').trim()
+    if (!nombre) return fail(c, 'Falta el id o el nombre del hábito')
+    const match = await c.env.DB
+      .prepare('SELECT id FROM habits WHERE is_active = 1 AND LOWER(name) = LOWER(?) LIMIT 1')
+      .bind(nombre)
+      .first()
+    if (!match) return fail(c, 'Hábito no encontrado', 404)
+    id = match.id
+  }
 
   const result = await checkHabitForWidget(c.env.DB, id)
   if (result.error) return fail(c, result.error, result.status ?? 400)
