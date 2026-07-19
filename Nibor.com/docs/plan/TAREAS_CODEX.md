@@ -140,3 +140,4 @@ Decisiones iniciales para el handoff:
 
 - 2026-07-04: Codex recomienda y adopta Cloudflare D1 para este proyecto. La API se implementará como Cloudflare Worker/Hono sobre binding `env.DB`; no Express/better-sqlite3 en el runtime objetivo.
 - 2026-07-04 11:50: Se agregó endpoint `/api/categories` aunque el CRUD UI aparece en Fase 4, porque el store y movimientos/suscripciones necesitan el catálogo desde Fase 1.
+- [x] 2026-07-18 Access para Widgy: creada en producción la aplicación Self-hosted limitada a `niborapp.com/api/widget/habits`, con política `Bypass` + `Everyone`; verificados 404 sin token, 200 con el secreto configurado y `/api/widget/url` protegido.
