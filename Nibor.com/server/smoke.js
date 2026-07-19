@@ -1108,6 +1108,25 @@ async function run() {
     throw new Error('El endpoint /widget/url no entrego la URL con token')
   }
 
+  const widgetHabit = await post('/habits', { name: `Smoke widget ${Date.now()}`, target_per_day: 1 })
+  if (!widgetHabit.id) throw new Error('No se creo habito smoke para el widget')
+  await expectFailure('/widget/habits?token=token-incorrecto', {
+    method: 'POST',
+    body: JSON.stringify({ id: widgetHabit.id }),
+  })
+  const widgetCheck = await post(`/widget/habits?token=smoke-widget-token`, { id: widgetHabit.id })
+  if (widgetCheck.met !== true || !String(widgetCheck.text).includes('✅')) {
+    throw new Error(`POST del widget no completo el habito: ${JSON.stringify(widgetCheck)}`)
+  }
+  const widgetCheckAgain = await post(`/widget/habits?token=smoke-widget-token`, { id: widgetHabit.id })
+  if (widgetCheckAgain.already !== true) throw new Error('POST del widget no fue idempotente al repetir')
+  const widgetBadId = await expectFailure(`/widget/habits?token=smoke-widget-token`, {
+    method: 'POST',
+    body: JSON.stringify({ id: 999999 }),
+  })
+  if (!String(widgetBadId.error ?? '').includes('no encontrado')) throw new Error('POST del widget no rechazo id inexistente')
+  await del(`/habits/${widgetHabit.id}`)
+
   const vehicle = await post('/vehicles', {
     nombre: `Smoke vehiculo ${Date.now()}`,
     tipo: 'carro',

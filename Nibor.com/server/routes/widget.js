@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
-import { fail, ok } from '../db.js'
-import { buildToday } from './habits.js'
+import { fail, ok, readJson, toInteger } from '../db.js'
+import { buildToday, checkHabitForWidget } from './habits.js'
 
 // API de widgets (Widgy, Shortcuts…): lectura sin login protegida por el
 // secreto WIDGET_TOKEN (?token=). En Cloudflare Access solo la ruta exacta
@@ -57,6 +57,45 @@ widget.get('/habits', async (c) => {
     text,
     resumen: data.summary,
     pendientes,
+  })
+})
+
+// Marcar un hábito como hecho desde un Atajo de Siri/Shortcuts. Usa la MISMA
+// ruta /habits (con id en body o query) para reutilizar el bypass exacto de
+// Access sin abrir rutas adicionales.
+widget.post('/habits', async (c) => {
+  const body = (await readJson(c)) ?? {}
+  const id = toInteger(body.id ?? c.req.query('id'))
+  if (!Number.isInteger(id)) return fail(c, 'Falta el id del hábito')
+
+  const result = await checkHabitForWidget(c.env.DB, id)
+  if (result.error) return fail(c, result.error, result.status ?? 400)
+
+  const nombre = `${result.habit.emoji ?? ''} ${result.habit.name}`.trim()
+  let text
+  if (result.already) {
+    text = `👌 ${nombre} ya estaba completo hoy (${result.done_today}/${result.target})`
+  } else if (result.met) {
+    text = `✅ ${nombre} completado (${result.done_today}/${result.target})`
+  } else {
+    text = `☑️ ${nombre}: ${result.done_today}/${result.target} — te ${result.target - result.done_today === 1 ? 'falta 1' : `faltan ${result.target - result.done_today}`}`
+  }
+
+  const today = await buildToday(c.env.DB)
+  if (today.summary.pending_today === 0 && today.summary.planned_today > 0) {
+    text += `\n🎉 ¡Día completo! (${today.summary.done_today}/${today.summary.planned_today})`
+  } else if (today.summary.pending_today > 0) {
+    text += `\n⏳ ${today.summary.pending_today} ${today.summary.pending_today === 1 ? 'pendiente' : 'pendientes'} · ${today.summary.percent_today}% del día`
+  }
+
+  return ok(c, {
+    text,
+    met: result.met,
+    already: result.already,
+    done_today: result.done_today,
+    target: result.target,
+    resumen: today.summary,
+    pendientes: today.habits.map((habit) => ({ id: habit.id, name: habit.name, emoji: habit.emoji ?? null })),
   })
 })
 

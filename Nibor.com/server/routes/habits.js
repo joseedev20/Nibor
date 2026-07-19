@@ -754,6 +754,35 @@ habits.delete('/:id', async (c) => {
   return ok(c, { id })
 })
 
+// Marca una unidad del hábito con la hora actual de Bogotá. Usado por la API
+// de widgets (widget.js); misma semántica que POST /:id/check: idempotente al
+// llegar al target y auto-defer cuando aún faltan repeticiones.
+export async function checkHabitForWidget(db, id) {
+  const habit = await getHabitById(db, id)
+  if (!habit || Number(habit.is_active) !== 1) return { error: 'Hábito no encontrado', status: 404 }
+
+  const eventTime = new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 19).replace('T', ' ')
+  const date = eventTime.slice(0, 10)
+  const done = await countHabitEventsForDate(db, id, date)
+  const target = Number(habit.target_per_day)
+  if (done >= target) {
+    return { habit, met: true, done_today: done, target, already: true }
+  }
+
+  await run(
+    db,
+    `INSERT INTO habit_events (habit_id, event_time, source, note)
+     VALUES (?, ?, 'manual', ?)`,
+    id,
+    eventTime,
+    'Marcado desde atajo',
+  )
+  const doneToday = done + 1
+  const met = doneToday >= target
+  if (!met) await upsertDefer(db, id, date)
+  return { habit, met, done_today: doneToday, target, already: false }
+}
+
 habits.post('/:id/check', async (c) => {
   const id = toInteger(c.req.param('id'))
   if (!Number.isInteger(id)) return fail(c, 'ID invalido')
