@@ -1097,9 +1097,28 @@ async function run() {
   const completedOnce = await post(`/reminders/${onceReminder.id}/complete`, {})
   if (completedOnce.estado !== 'completado') throw new Error('Recordatorio unico no quedo completado')
 
-  await expectFailure('/widget/habits')
+  const widgetNoToken = await fetch(`${baseUrl}/widget/habits`)
+  const widgetNoTokenBody = await widgetNoToken.text()
+  if (widgetNoToken.status !== 404 || !widgetNoTokenBody.trim() || JSON.parse(widgetNoTokenBody).error?.code !== 'NOT_FOUND') {
+    throw new Error('Widget sin token no devolvio 404 con JSON valido')
+  }
   await expectFailure('/widget/habits?token=token-incorrecto')
-  const widgetHabits = await request('/widget/habits?token=smoke-widget-token')
+
+  const widgetRaw = await fetch(`${baseUrl}/widget/habits?token=smoke-widget-token`)
+  if (
+    !String(widgetRaw.headers.get('content-type')).includes('application/json')
+    || !String(widgetRaw.headers.get('cache-control')).includes('no-store')
+    || !widgetRaw.headers.get('x-request-id')
+  ) {
+    throw new Error('Widget no devolvio content-type/cache-control/x-request-id esperados')
+  }
+  const widgetRawBody = await widgetRaw.text()
+  if (!widgetRawBody.trim()) throw new Error('Widget devolvio body vacio')
+  const widgetEnvelope = JSON.parse(widgetRawBody)
+  if (widgetEnvelope.success !== true || !widgetEnvelope.meta?.requestId) {
+    throw new Error(`Widget sin envelope success/meta: ${widgetRawBody.slice(0, 120)}`)
+  }
+  const widgetHabits = widgetEnvelope.data
   if (typeof widgetHabits.text !== 'string' || !widgetHabits.resumen || !Array.isArray(widgetHabits.pendientes)) {
     throw new Error(`Widget de habitos no devolvio el shape esperado: ${JSON.stringify(widgetHabits)}`)
   }
@@ -1126,7 +1145,9 @@ async function run() {
     method: 'POST',
     body: JSON.stringify({ id: 999999 }),
   })
-  if (!String(widgetBadId.error ?? '').includes('no encontrado')) throw new Error('POST del widget no rechazo id inexistente')
+  if (widgetBadId.error?.code !== 'NOT_FOUND' || !String(widgetBadId.data?.text ?? '').includes('no encontrado')) {
+    throw new Error('POST del widget no rechazo id inexistente con envelope JSON')
+  }
   await del(`/habits/${widgetHabit.id}`)
 
   const vehicle = await post('/vehicles', {
