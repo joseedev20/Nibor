@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useIsDark } from './composables/useIsDark.js'
+import { usePullToRefresh } from './composables/usePullToRefresh.js'
 
 const nav = [
   { to: '/', label: 'Resumen', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
@@ -55,6 +56,10 @@ function reloadPage() {
   window.location.reload()
 }
 
+const { pulling, refreshing, distance, ready } = usePullToRefresh(async () => {
+  reloadPage()
+})
+
 async function notificationRequest(path, options = {}) {
   const response = await fetch(path, options)
   const json = await response.json().catch(() => ({}))
@@ -100,6 +105,26 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="min-h-screen bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+    <div
+      v-if="pulling || refreshing"
+      class="fixed left-1/2 top-2 z-[60] flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-4 py-2 text-xs font-semibold text-zinc-600 shadow-lg dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
+      :style="{ transform: `translate(-50%, ${Math.max(0, distance - 36)}px)`, opacity: Math.min(1, distance / 36) }"
+    >
+      <svg v-if="refreshing" class="h-4 w-4 animate-spin text-emerald-600 dark:text-emerald-400" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+      </svg>
+      <svg
+        v-else
+        class="h-4 w-4 shrink-0 text-zinc-500 transition-transform duration-150 dark:text-zinc-400"
+        :style="{ transform: `rotate(${ready ? 180 : 0}deg)` }"
+        fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+      >
+        <path stroke-linecap="round" stroke-linejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+      </svg>
+      <span>{{ refreshing ? 'Actualizando…' : ready ? 'Suelta para actualizar' : 'Desliza para actualizar' }}</span>
+    </div>
+
     <header class="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-zinc-200 bg-white px-4 md:hidden dark:border-zinc-800 dark:bg-zinc-900">
       <div class="flex items-center gap-2">
         <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500 font-bold text-white">N</div>
