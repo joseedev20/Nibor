@@ -1148,6 +1148,30 @@ async function run() {
   if (widgetBadId.error?.code !== 'NOT_FOUND' || !String(widgetBadId.data?.text ?? '').includes('no encontrado')) {
     throw new Error('POST del widget no rechazo id inexistente con envelope JSON')
   }
+
+  const widgetReminder = await post('/reminders', {
+    titulo: `Smoke widget recordatorio ${notificationSmokeRunId}`,
+    proxima_fecha: todayIso,
+  })
+  if (widgetReminder.estado !== 'hoy') throw new Error('Recordatorio smoke para widget no nacio en hoy')
+  const widgetRemindersEnvelope = await request('/widget/reminders?token=smoke-widget-token')
+  if (typeof widgetRemindersEnvelope.text !== 'string' || !Array.isArray(widgetRemindersEnvelope.pendientes)) {
+    throw new Error(`Widget de recordatorios no devolvio el shape esperado: ${JSON.stringify(widgetRemindersEnvelope)}`)
+  }
+  if (!widgetRemindersEnvelope.pendientes.some((item) => item.id === widgetReminder.id)) {
+    throw new Error('El recordatorio smoke no aparecio en pendientes del widget')
+  }
+  await expectFailure('/widget/reminders?token=token-incorrecto')
+  const widgetReminderCheck = await post(`/widget/reminders?token=smoke-widget-token`, { titulo: widgetReminder.titulo })
+  if (!String(widgetReminderCheck.text ?? '').includes('✅')) {
+    throw new Error(`POST del widget de recordatorios no completo: ${JSON.stringify(widgetReminderCheck)}`)
+  }
+  const widgetReminderBadId = await expectFailure(`/widget/reminders?token=smoke-widget-token`, {
+    method: 'POST',
+    body: JSON.stringify({ id: 999999 }),
+  })
+  if (widgetReminderBadId.error?.code !== 'NOT_FOUND') throw new Error('POST del widget de recordatorios no rechazo id inexistente')
+  await del(`/reminders/${widgetReminder.id}`)
   await del(`/habits/${widgetHabit.id}`)
 
   const vehicle = await post('/vehicles', {

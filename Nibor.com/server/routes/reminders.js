@@ -6,7 +6,7 @@ import { all, fail, first, isValidDate, isValidTime, ok, readJson, run, toIntege
 // del centro de notificaciones (regla 'recordatorios' en notifications.js).
 const reminders = new Hono()
 
-function todayIso() {
+export function todayIso() {
   return new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10) // Bogotá UTC-5
 }
 
@@ -25,7 +25,7 @@ function cleanNullableText(value) {
   return text || null
 }
 
-function enrichReminder(reminder, hoy = todayIso()) {
+export function enrichReminder(reminder, hoy = todayIso()) {
   let estado = 'programado'
   let dias_restantes = null
   if (reminder.completado_en) estado = 'completado'
@@ -154,6 +154,49 @@ reminders.post('/:id/complete', async (c) => {
   const row = await first(c.env.DB, 'SELECT * FROM reminders WHERE id = ?', id)
   return ok(c, enrichReminder(row, hoy))
 })
+
+// ── Reutilizables por la API de widgets (server/routes/widget.js) ──────────
+
+// Recordatorios pendientes hoy (vencidos o para hoy), igual criterio que
+// la pestaña "Para hoy" de RecordatoriosView.
+export async function buildPendingReminders(db) {
+  const hoy = todayIso()
+  const rows = await all(
+    db,
+    `SELECT * FROM reminders WHERE activo = 1 AND completado_en IS NULL AND proxima_fecha <= ? ORDER BY proxima_fecha ASC, id ASC`,
+    hoy,
+  )
+  const enriched = rows.map((row) => enrichReminder(row, hoy))
+  return {
+    date: hoy,
+    pendientes: enriched.filter((row) => row.estado === 'hoy' || row.estado === 'vencido'),
+  }
+}
+
+// Misma semántica que POST /:id/complete: si tiene frecuencia, reprograma
+// proxima_fecha; si era único, queda completado.
+export async function completeReminderForWidget(db, id) {
+  const current = await first(db, 'SELECT * FROM reminders WHERE id = ?', id)
+  if (!current) return { error: 'Recordatorio no encontrado', status: 404 }
+
+  const hoy = todayIso()
+  if (current.frecuencia_dias) {
+    await run(
+      db,
+      `UPDATE reminders SET proxima_fecha = ?, activo = 1, completado_en = NULL, updated_at = datetime('now') WHERE id = ?`,
+      addDaysIso(hoy, Number(current.frecuencia_dias)),
+      id,
+    )
+  } else {
+    await run(
+      db,
+      `UPDATE reminders SET activo = 0, completado_en = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
+      id,
+    )
+  }
+  const row = await first(db, 'SELECT * FROM reminders WHERE id = ?', id)
+  return { reminder: enrichReminder(row, hoy) }
+}
 
 reminders.delete('/:id', async (c) => {
   const id = toInteger(c.req.param('id'))
