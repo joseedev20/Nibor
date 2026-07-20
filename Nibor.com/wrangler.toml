@@ -11,6 +11,10 @@ not_found_handling = "single-page-application"
 # El fallback SPA sirve index.html para rutas no estáticas. Las APIs deben
 # llegar primero al Worker; de lo contrario /api/* termina en el 404 de Vue.
 run_worker_first = ["/api/*"]
+# binding = "ASSETS" permite que el propio Worker lea archivos estáticos
+# (ej. imágenes de la API de widgets) desde código, sin exponer una ruta
+# nueva que necesite su propio bypass de Access.
+binding = "ASSETS"
 
 # Para desarrollo local el database_id puede ser un placeholder.
 # Antes del primer deploy remoto: `npx wrangler d1 create nibor-finanzas`

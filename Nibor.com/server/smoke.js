@@ -1122,9 +1122,34 @@ async function run() {
   if (typeof widgetHabits.text !== 'string' || !widgetHabits.resumen || !Array.isArray(widgetHabits.pendientes)) {
     throw new Error(`Widget de habitos no devolvio el shape esperado: ${JSON.stringify(widgetHabits)}`)
   }
+  if (typeof widgetHabits.image_url !== 'string' || !widgetHabits.image_url.includes('image=auto')) {
+    throw new Error('Widget de habitos no incluyo image_url')
+  }
+
+  const widgetImageNoToken = await fetch(`${baseUrl}/widget/habits?image=auto`)
+  if (widgetImageNoToken.status !== 404) throw new Error('Imagen de habitos sin token no devolvio 404')
+
+  for (const which of ['auto', 'complete', 'pending']) {
+    const widgetImage = await fetch(`${baseUrl}/widget/habits?token=smoke-widget-token&image=${which}`)
+    const widgetImageBuffer = new Uint8Array(await widgetImage.arrayBuffer())
+    const isPng = widgetImageBuffer.length >= 8
+      && widgetImageBuffer[0] === 0x89 && widgetImageBuffer[1] === 0x50 && widgetImageBuffer[2] === 0x4e && widgetImageBuffer[3] === 0x47
+    if (
+      widgetImage.status !== 200
+      || !String(widgetImage.headers.get('content-type')).includes('image/png')
+      || !String(widgetImage.headers.get('cache-control')).includes('no-store')
+      || !isPng
+    ) {
+      throw new Error(`Imagen de habitos (${which}) no devolvio un PNG valido: status=${widgetImage.status} bytes=${widgetImageBuffer.length}`)
+    }
+  }
+
   const widgetUrl = await request('/widget/url')
   if (!String(widgetUrl.habits_url).includes('token=smoke-widget-token')) {
     throw new Error('El endpoint /widget/url no entrego la URL con token')
+  }
+  if (!String(widgetUrl.habits_image_url ?? '').includes('image=auto')) {
+    throw new Error('El endpoint /widget/url no entrego habits_image_url')
   }
 
   const widgetHabit = await post('/habits', { name: `Smoke widget ${Date.now()}`, target_per_day: 1 })

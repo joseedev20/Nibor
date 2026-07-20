@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { readJson, toInteger } from '../db.js'
 import { buildToday, checkHabitForWidget } from './habits.js'
 import { buildPendingReminders, completeReminderForWidget } from './reminders.js'
-import { guarded, isValidWidgetToken, tokenFailure, withDbTimeout } from '../widgetKit.js'
+import { guarded, isValidWidgetToken, logWidget, tokenFailure, withDbTimeout } from '../widgetKit.js'
 
 // API de widgets (Widgy, Shortcuts…): lectura/acciones sin login protegidas
 // por el secreto WIDGET_TOKEN (?token=). En Cloudflare Access el bypass es
@@ -17,6 +17,46 @@ const widget = new Hono()
 
 function widgetToken(c) {
   return String(c.env.WIDGET_TOKEN ?? '').trim()
+}
+
+// Imagen del mascota (thumbs-up / pendiente) para el layer de imagen de
+// Widgy. Se sirve DENTRO de /api/widget/habits (mismo path ya exento en
+// Access vía ?image=) para no necesitar un bypass nuevo: el Worker lee el
+// PNG de sus propios assets estáticos con el binding ASSETS.
+const HABIT_IMAGE_FILES = {
+  complete: '/widget-images/habits-complete.png',
+  pending: '/widget-images/habits-pending.png',
+}
+
+const TRANSPARENT_PIXEL = Uint8Array.from(
+  atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='),
+  (ch) => ch.charCodeAt(0),
+)
+
+async function serveHabitImage(c, which) {
+  const requestId = c.req.header('cf-ray') ?? crypto.randomUUID()
+  const started = Date.now()
+  try {
+    const assetUrl = new URL(HABIT_IMAGE_FILES[which] ?? HABIT_IMAGE_FILES.pending, c.req.url)
+    const assetResponse = await c.env.ASSETS.fetch(new Request(assetUrl))
+    if (!assetResponse.ok) throw new Error(`asset ${which} respondió ${assetResponse.status}`)
+    logWidget({ requestId, route: '/api/widget/habits', method: 'GET', image: which, status: 200, durationMs: Date.now() - started })
+    return new Response(assetResponse.body, {
+      status: 200,
+      headers: { 'content-type': 'image/png', 'cache-control': 'no-store', 'x-request-id': requestId },
+    })
+  } catch (error) {
+    logWidget({
+      requestId, route: '/api/widget/habits', method: 'GET', image: which, status: 200,
+      durationMs: Date.now() - started, error: String(error?.message ?? error), fallback: 'transparent-pixel',
+    })
+    // El layer de imagen de Widgy nunca debe quedar roto: si el asset falla,
+    // un pixel transparente es preferible a un error visible.
+    return new Response(TRANSPARENT_PIXEL, {
+      status: 200,
+      headers: { 'content-type': 'image/png', 'cache-control': 'no-store', 'x-request-id': requestId },
+    })
+  }
 }
 
 function buildHabitsText(data, pendientes) {
@@ -39,6 +79,7 @@ widget.get('/url', (c) => guarded(c, '/api/widget/url', async () => {
       success: true,
       data: {
         habits_url: `${url.origin}/api/widget/habits?token=${encodeURIComponent(token)}`,
+        habits_image_url: `${url.origin}/api/widget/habits?token=${encodeURIComponent(token)}&image=auto`,
         reminders_url: `${url.origin}/api/widget/reminders?token=${encodeURIComponent(token)}`,
       },
     },
@@ -47,39 +88,64 @@ widget.get('/url', (c) => guarded(c, '/api/widget/url', async () => {
 
 // ── Hábitos ──────────────────────────────────────────────────────────────────
 
-widget.get('/habits', (c) => guarded(c, '/api/widget/habits', async () => {
-  if (!isValidWidgetToken(c)) return tokenFailure()
-
-  const dbStart = Date.now()
-  const data = await withDbTimeout(buildToday(c.env.DB), 'buildToday')
-  const dbMs = Date.now() - dbStart
-
-  const pendientes = data.habits.map((habit) => ({
-    id: habit.id,
-    name: habit.name,
-    emoji: habit.emoji ?? null,
-    done_today: habit.done_today,
-    target_per_day: habit.target_per_day,
-    remaining_today: habit.remaining_today,
-  }))
-
-  return {
-    status: 200,
-    payload: {
-      success: true,
-      data: {
-        date: data.date,
-        text: buildHabitsText(data, pendientes),
-        resumen: data.summary,
-        pendientes,
-        // Lista plana para "Elegir de la lista" en Atajos; el nombre elegido
-        // se puede mandar tal cual al POST como {nombre}.
-        pendientes_nombres: pendientes.map((habit) => habit.name),
-      },
-    },
-    extraLog: { auth: 'ok', dbMs, habitCount: pendientes.length },
+widget.get('/habits', async (c) => {
+  const imageParam = c.req.query('image')
+  // ?image=complete|pending|auto: sirve el PNG del mascota (mismo path ya
+  // exento de Access) en vez del JSON habitual.
+  if (imageParam !== undefined) {
+    if (!isValidWidgetToken(c)) return new Response(null, { status: 404 })
+    let which = imageParam
+    if (which !== 'complete' && which !== 'pending') {
+      try {
+        const data = await withDbTimeout(buildToday(c.env.DB), 'buildToday')
+        which = data.summary.pending_today === 0 ? 'complete' : 'pending'
+      } catch {
+        which = 'pending'
+      }
+    }
+    return serveHabitImage(c, which)
   }
-}))
+
+  return guarded(c, '/api/widget/habits', async () => {
+    if (!isValidWidgetToken(c)) return tokenFailure()
+
+    const dbStart = Date.now()
+    const data = await withDbTimeout(buildToday(c.env.DB), 'buildToday')
+    const dbMs = Date.now() - dbStart
+
+    const pendientes = data.habits.map((habit) => ({
+      id: habit.id,
+      name: habit.name,
+      emoji: habit.emoji ?? null,
+      done_today: habit.done_today,
+      target_per_day: habit.target_per_day,
+      remaining_today: habit.remaining_today,
+    }))
+
+    const url = new URL(c.req.url)
+    const token = c.req.query('token')
+
+    return {
+      status: 200,
+      payload: {
+        success: true,
+        data: {
+          date: data.date,
+          text: buildHabitsText(data, pendientes),
+          resumen: data.summary,
+          pendientes,
+          // Lista plana para "Elegir de la lista" en Atajos; el nombre elegido
+          // se puede mandar tal cual al POST como {nombre}.
+          pendientes_nombres: pendientes.map((habit) => habit.name),
+          // Listo para pegar en un layer de imagen de Widgy: cambia solo
+          // (thumbs-up / pendiente) según si quedan hábitos por hacer hoy.
+          image_url: `${url.origin}/api/widget/habits?token=${encodeURIComponent(token)}&image=auto`,
+        },
+      },
+      extraLog: { auth: 'ok', dbMs, habitCount: pendientes.length },
+    }
+  })
+})
 
 // Marcar un hábito como hecho desde un Atajo de Siri/Shortcuts. Usa la MISMA
 // ruta /habits (id o nombre en body/query) para reutilizar el bypass exacto
