@@ -1125,11 +1125,15 @@ async function run() {
   if (typeof widgetHabits.image_url !== 'string' || !widgetHabits.image_url.includes('image=auto')) {
     throw new Error('Widget de habitos no incluyo image_url')
   }
+  if (![0, 25, 50, 75, 100].includes(widgetHabits.progreso_bucket)) {
+    throw new Error(`Widget de habitos no incluyo progreso_bucket valido: ${JSON.stringify(widgetHabits.progreso_bucket)}`)
+  }
 
   const widgetImageNoToken = await fetch(`${baseUrl}/widget/habits?image=auto`)
   if (widgetImageNoToken.status !== 404) throw new Error('Imagen de habitos sin token no devolvio 404')
 
-  for (const which of ['auto', 'complete', 'pending']) {
+  const widgetImageBytesByKey = {}
+  for (const which of ['auto', 'complete', 'pending', '0', '25', '50', '75', '100']) {
     const widgetImage = await fetch(`${baseUrl}/widget/habits?token=smoke-widget-token&image=${which}`)
     const widgetImageBuffer = new Uint8Array(await widgetImage.arrayBuffer())
     const isPng = widgetImageBuffer.length >= 8
@@ -1142,6 +1146,11 @@ async function run() {
     ) {
       throw new Error(`Imagen de habitos (${which}) no devolvio un PNG valido: status=${widgetImage.status} bytes=${widgetImageBuffer.length}`)
     }
+    widgetImageBytesByKey[which] = widgetImageBuffer
+  }
+  if (widgetImageBytesByKey['0'].length === widgetImageBytesByKey['100'].length
+    && Buffer.compare(Buffer.from(widgetImageBytesByKey['0']), Buffer.from(widgetImageBytesByKey['100'])) === 0) {
+    throw new Error('Las imagenes de progreso 0 y 100 son identicas; deberian ser distintas')
   }
 
   const widgetUrl = await request('/widget/url')

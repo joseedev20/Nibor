@@ -19,13 +19,30 @@ function widgetToken(c) {
   return String(c.env.WIDGET_TOKEN ?? '').trim()
 }
 
-// Imagen del mascota (thumbs-up / pendiente) para el layer de imagen de
-// Widgy. Se sirve DENTRO de /api/widget/habits (mismo path ya exento en
-// Access vía ?image=) para no necesitar un bypass nuevo: el Worker lee el
-// PNG de sus propios assets estáticos con el binding ASSETS.
+// Imagen de la mascota para el layer de imagen de Widgy. Se sirve DENTRO de
+// /api/widget/habits (mismo path ya exento en Access vía ?image=) para no
+// necesitar un bypass nuevo: el Worker lee el PNG de sus propios assets
+// estáticos con el binding ASSETS.
+// `auto` elige uno de 5 niveles de progreso (0/25/50/75/100) según
+// percent_today, redondeado al múltiplo de 25 más cercano; `complete` y
+// `pending` quedan como valores explícitos por compatibilidad con scripts
+// de Widgy ya guardados.
 const HABIT_IMAGE_FILES = {
   complete: '/widget-images/habits-complete.png',
   pending: '/widget-images/habits-pending.png',
+  0: '/widget-images/habits-progress-0.png',
+  25: '/widget-images/habits-progress-25.png',
+  50: '/widget-images/habits-progress-50.png',
+  75: '/widget-images/habits-progress-75.png',
+  100: '/widget-images/habits-progress-100.png',
+}
+
+const PROGRESS_BUCKETS = [0, 25, 50, 75, 100]
+
+function progressBucketFor(percent) {
+  const clamped = Math.max(0, Math.min(100, Number(percent) || 0))
+  const rounded = Math.round(clamped / 25) * 25
+  return PROGRESS_BUCKETS.includes(rounded) ? rounded : 100
 }
 
 const TRANSPARENT_PIXEL = Uint8Array.from(
@@ -90,17 +107,19 @@ widget.get('/url', (c) => guarded(c, '/api/widget/url', async () => {
 
 widget.get('/habits', async (c) => {
   const imageParam = c.req.query('image')
-  // ?image=complete|pending|auto: sirve el PNG del mascota (mismo path ya
-  // exento de Access) en vez del JSON habitual.
+  // ?image=complete|pending|0|25|50|75|100|auto: sirve el PNG de la mascota
+  // (mismo path ya exento de Access) en vez del JSON habitual. "auto" (o
+  // cualquier valor no reconocido) elige el nivel de progreso según
+  // percent_today de hoy.
   if (imageParam !== undefined) {
     if (!isValidWidgetToken(c)) return new Response(null, { status: 404 })
     let which = imageParam
-    if (which !== 'complete' && which !== 'pending') {
+    if (!Object.prototype.hasOwnProperty.call(HABIT_IMAGE_FILES, which)) {
       try {
         const data = await withDbTimeout(buildToday(c.env.DB), 'buildToday')
-        which = data.summary.pending_today === 0 ? 'complete' : 'pending'
+        which = progressBucketFor(data.summary.percent_today)
       } catch {
-        which = 'pending'
+        which = 0
       }
     }
     return serveHabitImage(c, which)
@@ -137,9 +156,10 @@ widget.get('/habits', async (c) => {
           // Lista plana para "Elegir de la lista" en Atajos; el nombre elegido
           // se puede mandar tal cual al POST como {nombre}.
           pendientes_nombres: pendientes.map((habit) => habit.name),
-          // Listo para pegar en un layer de imagen de Widgy: cambia solo
-          // (thumbs-up / pendiente) según si quedan hábitos por hacer hoy.
+          // Listo para pegar en un layer de imagen de Widgy: cambia sola entre
+          // 5 mascotas (0/25/50/75/100) según percent_today.
           image_url: `${url.origin}/api/widget/habits?token=${encodeURIComponent(token)}&image=auto`,
+          progreso_bucket: progressBucketFor(data.summary.percent_today),
         },
       },
       extraLog: { auth: 'ok', dbMs, habitCount: pendientes.length },
