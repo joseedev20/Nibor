@@ -33,16 +33,41 @@ const isOffline = ref(false)
 const notificationUnread = ref(0)
 const notificationError = ref('')
 let notificationTimer = null
+let themeAutoTimer = null
 
 const notificationUnreadLabel = computed(() => notificationUnread.value > 99 ? '99+' : String(notificationUnread.value))
 
-function applyTheme(theme) {
+// Modo oscuro automático por hora de Bogotá (noche = oscuro) cuando el
+// usuario no eligió un modo manualmente. La elección manual (toggleTheme)
+// se guarda en localStorage y desde ahí ya no sigue el horario.
+function bogotaHour() {
+  const value = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Bogota',
+    hour: '2-digit',
+    hour12: false,
+  }).format(new Date())
+  const hour = Number(value)
+  return hour === 24 ? 0 : hour
+}
+
+function autoTheme() {
+  const hour = bogotaHour()
+  return hour >= 18 || hour < 9 ? 'dark' : 'light'
+}
+
+function applyThemeClass(theme) {
   document.documentElement.classList.toggle('dark', theme === 'dark')
-  localStorage.setItem('theme', theme)
+}
+
+function syncTheme() {
+  const savedTheme = localStorage.getItem('theme')
+  applyThemeClass(savedTheme === 'dark' || savedTheme === 'light' ? savedTheme : autoTheme())
 }
 
 function toggleTheme() {
-  applyTheme(isDark.value ? 'light' : 'dark')
+  const next = isDark.value ? 'light' : 'dark'
+  applyThemeClass(next)
+  localStorage.setItem('theme', next)
 }
 
 function closeSidebar() {
@@ -84,9 +109,8 @@ function handleNotificationsChanged() {
 }
 
 onMounted(() => {
-  const savedTheme = localStorage.getItem('theme')
-  const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches
-  applyTheme(savedTheme === 'dark' || (!savedTheme && prefersDark) ? 'dark' : 'light')
+  syncTheme()
+  themeAutoTimer = window.setInterval(syncTheme, 60 * 1000)
   mounted.value = true
   updateConnectionStatus()
   window.addEventListener('online', updateConnectionStatus)
@@ -97,6 +121,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (themeAutoTimer) window.clearInterval(themeAutoTimer)
   window.removeEventListener('online', updateConnectionStatus)
   window.removeEventListener('offline', updateConnectionStatus)
   window.removeEventListener('nibor:notifications-changed', handleNotificationsChanged)
