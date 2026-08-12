@@ -38,8 +38,10 @@ let themeAutoTimer = null
 const notificationUnreadLabel = computed(() => notificationUnread.value > 99 ? '99+' : String(notificationUnread.value))
 
 // Modo oscuro automático por hora de Bogotá (noche = oscuro) cuando el
-// usuario no eligió un modo manualmente. La elección manual (toggleTheme)
-// se guarda en localStorage y desde ahí ya no sigue el horario.
+// usuario no eligió un modo manualmente con el botón. `theme-override`
+// es la bandera de esa elección explícita; versiones previas de la app
+// guardaban `theme` en cada visita aunque nadie tocara el botón, así que
+// esa clave sola no basta para saber si fue una elección real.
 function bogotaHour() {
   const value = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Bogota',
@@ -60,14 +62,17 @@ function applyThemeClass(theme) {
 }
 
 function syncTheme() {
+  const hasOverride = localStorage.getItem('theme-override') === '1'
   const savedTheme = localStorage.getItem('theme')
-  applyThemeClass(savedTheme === 'dark' || savedTheme === 'light' ? savedTheme : autoTheme())
+  const theme = hasOverride && (savedTheme === 'dark' || savedTheme === 'light') ? savedTheme : autoTheme()
+  applyThemeClass(theme)
 }
 
 function toggleTheme() {
   const next = isDark.value ? 'light' : 'dark'
   applyThemeClass(next)
   localStorage.setItem('theme', next)
+  localStorage.setItem('theme-override', '1')
 }
 
 function closeSidebar() {
