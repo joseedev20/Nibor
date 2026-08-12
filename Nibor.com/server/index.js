@@ -9,6 +9,7 @@ import goals from './routes/goals.js'
 import habits from './routes/habits.js'
 import health from './routes/health.js'
 import homeModule from './routes/home.js'
+import ideas from './routes/ideas.js'
 import knowledge from './routes/knowledge.js'
 import loans from './routes/loans.js'
 import movements from './routes/movements.js'
@@ -43,6 +44,7 @@ app.route('/habits', habits)
 app.route('/home', homeModule)
 app.route('/salud', health)
 app.route('/knowledge', knowledge)
+app.route('/ideas', ideas)
 app.route('/loans', loans)
 app.route('/vehicles', vehicles)
 app.route('/music', music)

@@ -113,6 +113,8 @@ try {
     'CALENDAR_FEED_TOKEN:smoke-calendar-token',
     '--var',
     'WIDGET_TOKEN:smoke-widget-token',
+    '--var',
+    'EXPENSES_SHORTCUT_TOKEN:smoke-expenses-token',
     '--show-interactive-dev-session=false',
   ], {
     ...commandOptions,

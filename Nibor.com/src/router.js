@@ -5,6 +5,7 @@ const routes = [
   { path: '/notificaciones', name: 'notificaciones', component: () => import('./views/NotificacionesView.vue'), meta: { title: 'Notificaciones' } },
   { path: '/musica', name: 'musica', component: () => import('./views/MusicaView.vue'), meta: { title: 'Música' } },
   { path: '/conocimiento', name: 'conocimiento', component: () => import('./views/ConocimientoView.vue'), meta: { title: 'Conocimiento' } },
+  { path: '/ideas', name: 'ideas', component: () => import('./views/IdeasView.vue'), meta: { title: 'Ideas' } },
   { path: '/habitos', name: 'habitos', component: () => import('./views/HabitosView.vue'), meta: { title: 'Hábitos' } },
   { path: '/eventos', name: 'eventos', component: () => import('./views/EventosView.vue'), meta: { title: 'Eventos' } },
   { path: '/recordatorios', name: 'recordatorios', component: () => import('./views/RecordatoriosView.vue'), meta: { title: 'Recordatorios' } },

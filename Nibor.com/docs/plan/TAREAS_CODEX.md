@@ -31,6 +31,8 @@ Notas técnicas para Fase 1:
 - [x] 2.4 Fila TOTAL del año: aportes totales, retiros totales, ganancia acumulada, rentabilidad acumulada
 - [x] 2.5 Vista consolidada "Todas": tabla con el total de las 4 plataformas por mes
   - 2026-07-04 11:54 Codex: `/api/snapshots` devuelve `total` por plataforma y `consolidated`, para que Vue no recalcule ganancia/rentabilidad. `InversionesView.vue` solo presenta esos valores y guarda cambios vía POST/PUT.
+- [x] 2026-07-28 Mostrar `Saldo base` por mes usando `saldo_total_inicial` del backend, renombrar `Aporte` a `Aportes` y aclarar `Capital invertido` como acumulado histórico. El smoke cubre que dos aportes del mismo mes se acumulen y actualicen el saldo base.
+  - 2026-07-28 19:55 Codex: publicado en `niborapp.com` como Worker `4623b899-ee43-4376-a0e0-91f2f97fd7a5`; Access verificado con 302 en `/` y `/api/health`.
 
 ## Fase 4 — Gastos, Ingresos y Suscripciones
 
@@ -41,6 +43,12 @@ Notas técnicas para Fase 1:
 - [x] 4.5 Botón "Aplicar suscripciones a este mes" (usa el endpoint 1.4)
 - [x] 4.6 CRUD de categorías dentro de `ConfigView.vue`
   - 2026-07-04 12:00 Codex: vistas conectadas a API D1. `GastosView` usa `/api/movements` y `/api/summary`; `SuscripcionesView` usa `/api/subscriptions/apply`; `ConfigView` administra `/api/categories`.
+
+## API de gastos para Atajos
+
+- [x] 2026-07-28 Implementar `GET/POST /api/widget/expenses`: catálogo de categorías y creación de gastos desde iPhone con `EXPENSES_SHORTCUT_TOKEN`, fecha Bogotá, categoría por nombre/ID y `request_id` idempotente.
+- [x] 2026-07-28 Migración `0034_shortcut_expenses.sql`: `movements.external_source` + `external_id` e índice único por integración.
+- [x] 2026-07-28 Configurar `EXPENSES_SHORTCUT_TOKEN`, aplicar migración D1, desplegar y crear en Access el bypass exacto `niborapp.com/api/widget/expenses` con política `Bypass` + `Everyone`. Verificado sin insertar gastos personales: sin token responde el 404 deliberado; `/api/movements` y `/api/widget/url` continúan protegidos con 302.
 
 ## Apoyos a Claude
 
@@ -141,3 +149,4 @@ Decisiones iniciales para el handoff:
 - 2026-07-04: Codex recomienda y adopta Cloudflare D1 para este proyecto. La API se implementará como Cloudflare Worker/Hono sobre binding `env.DB`; no Express/better-sqlite3 en el runtime objetivo.
 - 2026-07-04 11:50: Se agregó endpoint `/api/categories` aunque el CRUD UI aparece en Fase 4, porque el store y movimientos/suscripciones necesitan el catálogo desde Fase 1.
 - [x] 2026-07-18 Access para Widgy: creada en producción la aplicación Self-hosted limitada a `niborapp.com/api/widget/habits`, con política `Bypass` + `Everyone`; verificados 404 sin token, 200 con el secreto configurado y `/api/widget/url` protegido.
+- [x] 2026-07-20 Access para Atajos/Recordatorios: creada en producción la aplicación Self-hosted limitada a `niborapp.com/api/widget/reminders`, con política `Bypass` + `Everyone`; verificados 404 sin token, 200 con el secreto configurado y `/api/widget/url` protegido.

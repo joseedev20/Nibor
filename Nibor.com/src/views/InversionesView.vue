@@ -271,10 +271,11 @@ onMounted(loadSnapshots)
               <th class="w-36 px-4 py-3">Mes</th>
               <th class="w-28 px-4 py-3">Estado</th>
               <th class="w-36 px-4 py-3 text-right">Saldo inicial</th>
-              <th class="w-32 px-4 py-3 text-right">Aporte</th>
+              <th class="w-32 px-4 py-3 text-right">Aportes</th>
+              <th class="w-36 px-4 py-3 text-right" title="Saldo inicial + aportes acumulados durante el mes.">Saldo base</th>
               <th class="w-32 px-4 py-3 text-right">Retiros</th>
               <th class="w-36 px-4 py-3 text-right">Saldo final</th>
-              <th class="w-36 px-4 py-3 text-right" title="Base inicial + aportes acumulados − retiros. Lo que realmente has metido, sin contar ganancias.">Invertido</th>
+              <th class="w-36 px-4 py-3 text-right" title="Capital histórico aportado − retiros, sin contar ganancias.">Capital invertido</th>
               <th class="w-36 px-4 py-3 text-right">Ganancia</th>
               <th class="w-32 px-4 py-3 text-right">Rentabilidad</th>
               <th class="w-28 px-4 py-3 text-right"></th>
@@ -295,6 +296,12 @@ onMounted(loadSnapshots)
               </td>
               <td class="px-4 py-3 text-right tabular-nums">{{ formatCOP(row.saldo_inicial) }}</td>
               <td class="px-4 py-3 text-right tabular-nums">{{ formatCOP(row.aporte) }}</td>
+              <td
+                class="px-4 py-3 text-right tabular-nums font-medium text-zinc-700 dark:text-zinc-200"
+                title="Saldo inicial + aportes acumulados del mes"
+              >
+                {{ row.exists !== false ? formatCOP(row.saldo_total_inicial) : '—' }}
+              </td>
               <td class="px-4 py-3 text-right tabular-nums">{{ formatCOP(row.retiros) }}</td>
               <td class="px-4 py-3 text-right tabular-nums">{{ formatCOP(row.saldo_final) }}</td>
               <td class="px-4 py-3 text-right tabular-nums text-zinc-500 dark:text-zinc-400" :title="row.ganancia_acumulada !== null && row.ganancia_acumulada !== undefined ? `Ganancia acumulada: ${formatCOP(row.ganancia_acumulada)}` : ''">
@@ -320,6 +327,7 @@ onMounted(loadSnapshots)
               <td class="px-4 py-3"></td>
               <td class="px-4 py-3 text-right tabular-nums">{{ formatCOP(total?.saldo_inicial) }}</td>
               <td class="px-4 py-3 text-right tabular-nums">{{ formatCOP(total?.aporte) }}</td>
+              <td class="px-4 py-3 text-right text-zinc-400" title="El saldo base se consulta por mes para no duplicar capital.">—</td>
               <td class="px-4 py-3 text-right tabular-nums">{{ formatCOP(total?.retiros) }}</td>
               <td class="px-4 py-3 text-right tabular-nums">{{ formatCOP(total?.saldo_final) }}</td>
               <td class="px-4 py-3 text-right tabular-nums" :title="total?.rentabilidad_capital !== null && total?.rentabilidad_capital !== undefined ? `Retorno sobre lo invertido: ${formatPct(total.rentabilidad_capital)}` : ''">{{ formatCOP(total?.capital_invertido) }}</td>
@@ -357,7 +365,7 @@ onMounted(loadSnapshots)
 
           <div class="grid gap-4 sm:grid-cols-2">
             <label class="grid gap-1 text-sm">
-              <span class="font-medium text-zinc-700 dark:text-zinc-300">Aporte</span>
+              <span class="font-medium text-zinc-700 dark:text-zinc-300">Aportes del mes</span>
               <input
                 v-model="form.aporte"
                 type="number"

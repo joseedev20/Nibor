@@ -1,6 +1,6 @@
 # Estado compartido — Nibor.com
 
-Actualizado: 2026-07-15 20:20 -05:00
+Actualizado: 2026-07-28 21:12 -05:00
 
 ## Decisión activa
 
@@ -44,12 +44,22 @@ Actualizado: 2026-07-15 20:20 -05:00
 | 16 — Casa | Codex (plan) + Claude (implementación) | Completada | Migración `0024_home.sql` local y remota, API `/api/home`, vista `/casa`, menú, smoke, docs y deploy `64ffdf04` publicados |
 | 17 — Bansky | Claude | Completada | Migración `0027_pets.sql`, API `/api/pets`, vista `/bansky`, gastos sincronizados con movements, smoke y deploy |
 | 18 — Recordatorios | Claude | Completada | Migración `0028_reminders.sql`, API `/api/reminders`, regla `recordatorios` en el motor, vista `/recordatorios`, smoke y deploy |
+| 19 — Ideas | Claude | Completada | Migración `0033_ideas.sql`, API `/api/ideas`, vista `/ideas`, menú lateral y smoke listos. Migración remota aplicada y desplegado en `niborapp.com` como `73e22488-80b5-4197-993f-754cdaa383ec` |
+| 20 — Atajo de Gastos | Codex | Completada | Endpoint idempotente, secreto remoto, migración D1, deploy y bypass exacto de Access verificados |
 
 ## Bloqueos activos
 
 - Access ya tiene dos correos exactos autorizados y OTP por correo; `workers.dev`/Preview URLs siguen desactivados. El Worker se despliega desde Git en `niborapp.com`.
 
 ## Handoff actual
+
+- 2026-07-28: Codex completó y publicó `GET/POST /api/widget/expenses` para registrar gastos desde Atajos de iPhone. `EXPENSES_SHORTCUT_TOKEN` existe como secreto remoto, D1 no tiene migraciones pendientes y el Worker quedó publicado como versión `9864b80d-cfb1-43d4-97a3-91df80457c82`. En Cloudflare Access se creó la aplicación `Atajo gastos Nibor` únicamente para `niborapp.com/api/widget/expenses`, con política `Bypass` + `Everyone`. Verificación sin insertar gastos reales: la ruta sin token llega al Worker y devuelve el 404 deliberado; `/api/movements` y `/api/widget/url` siguen protegidos con 302.
+
+- 2026-07-28: Codex publicó la mejora de Inversiones con `Saldo base`, `Aportes` y `Capital invertido` en `niborapp.com` como versión `4623b899-ee43-4376-a0e0-91f2f97fd7a5`. `npm test`, build y smoke aislado OK; `/` y `/api/health` continúan protegidos por Access con respuesta 302 sin sesión.
+
+- 2026-07-25: Claude corrigió el header móvil tapado por la barra de estado de iOS al abrir la app desde "Agregar a pantalla de inicio" (modo standalone). Causa: `apple-mobile-web-app-status-bar-style = black-translucent` en `index.html` hace que iOS dibuje la barra de estado (reloj/batería/señal) superpuesta sobre el contenido en standalone, y esa barra es del sistema operativo, no del WebView, así que también absorbe los toques — por eso el logo/botones de arriba quedaban inalcanzables solo en la app instalada, nunca en Safari normal (que reserva su propia barra). Fix solo de CSS en `App.vue`: `env(safe-area-inset-top)` como padding/offset en el header móvil sticky, el indicador de pull-to-refresh, el banner offline y la fila superior del drawer lateral; en navegador normal ese valor es 0, así que no cambia nada ahí. No toca D1 ni la API.
+
+- 2026-07-25: Claude agregó Nibor Ideas (módulo nuevo, pedido directo del usuario tras leer el tip "Mantener un archivo de ideas"): migración `0033_ideas.sql` (`ideas`: contenido, tipo idea/cita/reflexion/enlace/otro, fuente, etiquetas, favorita, archivada), API `/api/ideas` (GET siempre devuelve activas+archivadas para que el frontend las separe, como Recordatorios; etiquetas normalizadas y filtrables), vista `/ideas` con captura rápida de un solo campo, filtros por tipo/etiqueta/búsqueda, favoritas y sección archivadas colapsable, y entrada en el menú lateral. `server/smoke.js` cubre creación, normalización/dedupe de etiquetas, validaciones, favoritas, filtro por etiqueta y archivado. Verificado en local con `npm run dev` (API probada end-to-end vía curl, datos de prueba limpiados) y en navegador. Migración aplicada en D1 remota y desplegado en `niborapp.com` como `73e22488-80b5-4197-993f-754cdaa383ec`; `/api/health` responde 302 (protegido por Access, sin bypass accidental).
 
 - 2026-07-15: Claude implementó el módulo Casa (16.1–16.11). Cambio de alcance confirmado por el usuario: UN solo PDF por mensualidad (cuenta de cobro + comprobante unidos por él antes de subir); el pago sigue guardándose por separado (`fecha_pago`, `valor_pagado`, `mora_cobrada`) porque de ahí salen los estados backend. Estados: `pendiente`, `pagado_con_descuento` (pago dentro de la fecha límite con descuento), `pagado_sin_descuento`, `en_mora` (sin pagar y vencida, o pago con mora cobrada — nunca inferida solo por la fecha de descuento). El MVP no crea movimientos automáticos en Gastos.
 
@@ -62,6 +72,7 @@ Actualizado: 2026-07-15 20:20 -05:00
 - QA Wizard Fase 5: cierre ficticio de julio OK, Dashboard/Inversiones vía API reflejan el cierre, validaciones negativas OK, julio revertido a pendiente sin borrar filas.
 - 2026-07-12: D1 remota `nibor-finanzas` creada y migrada; R2 privado `nibor-files` creado; 6.452 filas de la D1 local se migraron y los conteos clave coinciden. `wrangler.toml` usa el ID remoto real. Falta commit/push, conectar Workers Builds y asociar el dominio al Worker.
 - Codex actualizó `/api/snapshots` con `consolidated_by_tipo` y `InversionesView` permite alternar Total, Inversiones y Fondos de ahorro dentro de la pestaña "Todas".
+- Codex agregó `Saldo base` a la tabla de Inversiones usando `saldo_total_inicial` calculado por backend (`saldo inicial + aportes acumulados`), cambió el encabezado a `Aportes` y aclaró `Capital invertido` como el acumulado histórico neto de retiros. No hubo cambios de esquema ni rutas.
 - Codex agregó presets guiados de ingresos fijos en `SuscripcionesView` (Salario y Arriendo apartamento) y aviso en Dashboard cuando no hay ingresos fijos para calcular tasa de ahorro.
 - Codex agregó módulo Metas: migraciones `0004_goals.sql` y `0005_goal_allocations_amount.sql`, API `/api/goals`, vista `MetasView`, ruta `/metas` y navegación lateral. La UI permite asignar fuentes por valor COP o por porcentaje; el backend normaliza y guarda `monto_asignado` + `porcentaje`.
 - Codex agregó soporte para suscripciones en USD: migración `0006_subscriptions_currency.sql`, endpoint `GET /api/exchange-rates/usd-cop`, UI para TRM + margen de banco y aplicación mensual usando TRM vigente con fallback a la tasa guardada.
@@ -119,3 +130,4 @@ Actualizado: 2026-07-15 20:20 -05:00
 - Casa v2 (migración 0032): `home_properties.estado` (`en_arriendo`/`propia`/`vendida`), `home_property_documents` (PDFs R2 `casa/{id}/docs/…`), `movements.home_property_id` y `subscriptions.home_property_id`. Los ingresos/gastos de una propiedad NUNCA se duplican: son movements (directos o del fijo vinculado) y el resumen se calcula en backend. Una propiedad vendida conserva historial/documentos y sale del registro mensual en la UI.
 - 2026-07-15: ampliación de Vehículos completada. Migración `0023` aplicada en D1 remota; Tarjeta de propiedad agregada a vehículos existentes/nuevos y licencia personal publicada con PDF privado, categorías dinámicas, vencimientos backend y notificaciones.
 - 2026-07-18: aplicación Access de Widgy creada en la cuenta de producción con destino exacto `niborapp.com/api/widget/habits` y política `Bypass` + `Everyone`; `/api/widget/url` permanece detrás de Access. Verificación: sin token 404, con el secreto configurado 200 JSON con `date`, `text`, `resumen` y `pendientes` dentro de `data`.
+- 2026-07-20: aplicación Access de Widgy reminders creada en producción con destino exacto `niborapp.com/api/widget/reminders` y política `Bypass` + `Everyone`; `/api/widget/url` permanece detrás de Access. Verificación: sin token 404, con el secreto configurado 200 JSON.

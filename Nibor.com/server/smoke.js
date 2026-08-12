@@ -92,6 +92,11 @@ async function cleanupSmokeData(platformId) {
     await del(`/music/songs/${song.id}`)
   }
 
+  const ideasList = await request('/ideas')
+  for (const ideaEntry of ideasList.ideas.filter((item) => String(item.contenido).startsWith('Smoke '))) {
+    await del(`/ideas/${ideaEntry.id}`)
+  }
+
   const events = await request('/events')
   for (const event of events.filter((item) => String(item.titulo).startsWith('Smoke '))) {
     await del(`/events/${event.id}`)
@@ -148,7 +153,7 @@ async function cleanupSmokeData(platformId) {
   const platform = snapshots.platforms.find((item) => item.id === platformId)
   if (!platform) return
 
-  for (const snapshot of platform.snapshots.filter((item) => item.id && [1, 2, 3].includes(item.mes))) {
+  for (const snapshot of platform.snapshots.filter((item) => item.id && [1, 2, 3, 4].includes(item.mes))) {
     await del(`/snapshots/${snapshot.id}`)
   }
 }
@@ -336,6 +341,28 @@ async function run() {
 
   if (closed.ganancia_mes !== 55) throw new Error(`Ganancia cierre inesperada: ${closed.ganancia_mes}`)
   if (closed.movimientos.total_ingresos < 300) throw new Error('Cierre no incluyó movimientos manuales')
+
+  const firstCapitalMovement = await post('/snapshots/movement', {
+    platform_id: platform.id,
+    anio: smokeYear,
+    mes: 4,
+    tipo: 'aporte',
+    monto: 700,
+  })
+  if (firstCapitalMovement.aporte !== 700 || firstCapitalMovement.saldo_total_inicial !== 2100) {
+    throw new Error('El primer aporte del mes no actualizó el saldo base')
+  }
+
+  const secondCapitalMovement = await post('/snapshots/movement', {
+    platform_id: platform.id,
+    anio: smokeYear,
+    mes: 4,
+    tipo: 'aporte',
+    monto: 100,
+  })
+  if (secondCapitalMovement.aporte !== 800 || secondCapitalMovement.saldo_total_inicial !== 2200) {
+    throw new Error('Los aportes adicionales no se acumularon en el saldo base')
+  }
 
   const goal = await post('/goals', {
     nombre: `Smoke meta ${Date.now()}`,
@@ -1097,6 +1124,49 @@ async function run() {
   const completedOnce = await post(`/reminders/${onceReminder.id}/complete`, {})
   if (completedOnce.estado !== 'completado') throw new Error('Recordatorio unico no quedo completado')
 
+  const idea = await post('/ideas', {
+    contenido: `Smoke idea ${Date.now()}`,
+    tipo: 'cita',
+    fuente: 'Smoke libro',
+    etiquetas: 'Productividad, Libros, productividad',
+  })
+  if (idea.tipo !== 'cita' || idea.fuente !== 'Smoke libro') throw new Error('Idea smoke no guardo tipo/fuente')
+  if (idea.etiquetas.length !== 2 || !idea.etiquetas.includes('productividad') || !idea.etiquetas.includes('libros')) {
+    throw new Error(`Idea smoke no normalizo etiquetas (dedupe/minusculas): ${JSON.stringify(idea.etiquetas)}`)
+  }
+
+  const invalidIdea = await expectFailure('/ideas', {
+    method: 'POST',
+    body: JSON.stringify({ contenido: 'Smoke invalida', tipo: 'no-existe' }),
+  })
+  if (!String(invalidIdea.error ?? '').includes('tipo')) throw new Error('Idea no rechazo tipo invalido')
+
+  const emptyIdea = await expectFailure('/ideas', { method: 'POST', body: JSON.stringify({ contenido: '   ' }) })
+  if (!String(emptyIdea.error ?? '').includes('contenido')) throw new Error('Idea no rechazo contenido vacio')
+
+  const favoriteIdea = await put(`/ideas/${idea.id}`, { favorita: true })
+  if (favoriteIdea.favorita !== 1) throw new Error('Idea no quedo marcada como favorita')
+
+  const ideasByTag = await request('/ideas?etiqueta=productividad')
+  if (!ideasByTag.ideas.some((entry) => entry.id === idea.id)) throw new Error('Filtro de ideas por etiqueta no incluyo la idea smoke')
+  const tagEntry = ideasByTag.counts.tags.find((entry) => entry.etiqueta === 'productividad')
+  if (!tagEntry || tagEntry.total < 1) throw new Error('Nube de etiquetas de ideas no conto la idea smoke')
+
+  const ideasFavorites = await request('/ideas?favoritas=1')
+  if (!ideasFavorites.ideas.some((entry) => entry.id === idea.id)) throw new Error('Filtro de ideas favoritas no incluyo la idea smoke')
+
+  const archivedIdea = await put(`/ideas/${idea.id}`, { archivada: true })
+  if (archivedIdea.archivada !== 1) throw new Error('Idea no quedo archivada')
+  const ideasAll = await request('/ideas')
+  if (!ideasAll.ideas.some((entry) => entry.id === idea.id && entry.archivada === 1)) {
+    throw new Error('Listado de ideas no sigue incluyendo la idea archivada (debe verse en frontend, no ocultarse en backend)')
+  }
+  if (ideasAll.counts.por_tipo.cita < 1) throw new Error('Conteo de ideas por tipo no incluyo la idea smoke')
+
+  await del(`/ideas/${idea.id}`)
+  const ideaMissing = await expectFailure(`/ideas/${idea.id}`, { method: 'PUT', body: JSON.stringify({ contenido: 'x' }) })
+  if (ideaMissing.error !== 'Idea no encontrada') throw new Error('Editar idea eliminada no devolvio 404 esperado')
+
   const widgetNoToken = await fetch(`${baseUrl}/widget/habits`)
   const widgetNoTokenBody = await widgetNoToken.text()
   if (widgetNoToken.status !== 404 || !widgetNoTokenBody.trim() || JSON.parse(widgetNoTokenBody).error?.code !== 'NOT_FOUND') {
@@ -1159,6 +1229,102 @@ async function run() {
   }
   if (!String(widgetUrl.habits_image_url ?? '').includes('image=auto')) {
     throw new Error('El endpoint /widget/url no entrego habits_image_url')
+  }
+  if (!String(widgetUrl.expenses_url ?? '').includes('token=smoke-expenses-token')) {
+    throw new Error('El endpoint /widget/url no entrego expenses_url con su token independiente')
+  }
+
+  const widgetExpensesNoToken = await expectFailure('/widget/expenses')
+  if (widgetExpensesNoToken.error?.code !== 'NOT_FOUND') {
+    throw new Error('Widget de gastos sin token no devolvio 404 seguro')
+  }
+  await expectFailure('/widget/expenses?token=token-incorrecto')
+
+  const widgetExpenseCategories = await request('/widget/expenses?token=smoke-expenses-token')
+  if (
+    !Array.isArray(widgetExpenseCategories.categorias)
+    || !widgetExpenseCategories.categorias.some((item) => item.id === expenseCategory.id)
+    || !widgetExpenseCategories.categorias_nombres.includes(expenseCategory.nombre)
+  ) {
+    throw new Error('Widget de gastos no devolvio las categorias esperadas')
+  }
+
+  const widgetExpenseRequestId = `smoke-expense-${notificationSmokeRunId}`
+  const widgetExpensePayload = {
+    monto: 321,
+    descripcion: 'Smoke gasto desde Atajo',
+    categoria: expenseCategory.nombre,
+    fecha: `${smokeYear}-04-18`,
+    request_id: widgetExpenseRequestId,
+  }
+  const widgetExpense = await post(
+    '/widget/expenses?token=smoke-expenses-token',
+    widgetExpensePayload,
+  )
+  if (
+    widgetExpense.duplicado !== false
+    || widgetExpense.movimiento?.monto !== 321
+    || widgetExpense.movimiento?.categoria_id !== expenseCategory.id
+  ) {
+    throw new Error(`Widget de gastos no creo el movimiento esperado: ${JSON.stringify(widgetExpense)}`)
+  }
+
+  const repeatedWidgetExpense = await post(
+    '/widget/expenses?token=smoke-expenses-token',
+    widgetExpensePayload,
+  )
+  if (
+    repeatedWidgetExpense.duplicado !== true
+    || repeatedWidgetExpense.movimiento?.id !== widgetExpense.movimiento.id
+  ) {
+    throw new Error('Widget de gastos no fue idempotente al repetir request_id')
+  }
+
+  const widgetExpenseConflict = await expectFailure(
+    '/widget/expenses?token=smoke-expenses-token',
+    {
+      method: 'POST',
+      body: JSON.stringify({ ...widgetExpensePayload, monto: 999 }),
+    },
+  )
+  if (widgetExpenseConflict.error?.code !== 'IDEMPOTENCY_CONFLICT') {
+    throw new Error('Widget de gastos no rechazo request_id reutilizado con otro monto')
+  }
+
+  const widgetExpenseBadCategory = await expectFailure(
+    '/widget/expenses?token=smoke-expenses-token',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        ...widgetExpensePayload,
+        request_id: `${widgetExpenseRequestId}-category`,
+        categoria: 'Smoke categoria inexistente',
+      }),
+    },
+  )
+  if (widgetExpenseBadCategory.error?.code !== 'CATEGORY_NOT_FOUND') {
+    throw new Error('Widget de gastos no rechazo categoria inexistente')
+  }
+
+  const widgetExpenseMissingRequestId = await expectFailure(
+    '/widget/expenses?token=smoke-expenses-token',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        monto: 123,
+        descripcion: 'Smoke sin UUID',
+        categoria_id: expenseCategory.id,
+        fecha: `${smokeYear}-04-18`,
+      }),
+    },
+  )
+  if (widgetExpenseMissingRequestId.error?.code !== 'BAD_REQUEST') {
+    throw new Error('Widget de gastos permitio crear sin request_id')
+  }
+
+  const widgetExpenseMovements = await request(`/movements?anio=${smokeYear}&tipo=gasto`)
+  if (widgetExpenseMovements.filter((item) => item.id === widgetExpense.movimiento.id).length !== 1) {
+    throw new Error('El gasto idempotente no quedo exactamente una vez en movements')
   }
 
   const widgetHabit = await post('/habits', { name: `Smoke widget ${Date.now()}`, target_per_day: 1 })
@@ -1483,7 +1649,7 @@ async function run() {
 
   await cleanupSmokeData(platform.id)
 
-  console.log('Endpoints OK: platforms, categories, cards, snapshots, movements, subscriptions/apply, summary, close-month, goals, music, knowledge, habits, loans, salud, events, vehicles, family, home, pets, reminders, widget, notifications')
+  console.log('Endpoints OK: platforms, categories, cards, snapshots, movements, subscriptions/apply, summary, close-month, goals, music, knowledge, ideas, habits, loans, salud, events, vehicles, family, home, pets, reminders, widget, notifications')
 }
 
 run().catch((error) => {

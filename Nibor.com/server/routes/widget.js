@@ -2,13 +2,15 @@ import { Hono } from 'hono'
 import { readJson, toInteger } from '../db.js'
 import { buildToday, checkHabitForWidget } from './habits.js'
 import { buildPendingReminders, completeReminderForWidget } from './reminders.js'
+import widgetExpenses from './widgetExpenses.js'
 import { guarded, isValidWidgetToken, logWidget, tokenFailure, withDbTimeout } from '../widgetKit.js'
 
 // API de widgets (Widgy, Shortcuts…): lectura/acciones sin login protegidas
 // por el secreto WIDGET_TOKEN (?token=). En Cloudflare Access el bypass es
-// por RUTA EXACTA: /api/widget/habits y /api/widget/reminders (cada recurso
-// nuevo necesita su propia app de bypass); /api/widget/url queda detrás del
-// login porque le entrega la URL con token al usuario autenticado.
+// por RUTA EXACTA: /api/widget/habits, /api/widget/reminders y
+// /api/widget/expenses (cada recurso nuevo necesita su propia app de bypass);
+// gastos usa un secreto independiente EXPENSES_SHORTCUT_TOKEN.
+// /api/widget/url queda detrás del login porque entrega las URLs con token.
 //
 // El contrato de robustez (envelope JSON siempre, nunca body vacío, timeout
 // a D1, logging estructurado) vive en server/widgetKit.js y se comparte
@@ -86,6 +88,7 @@ function buildHabitsText(data, pendientes) {
 // Detrás de Access (sin bypass): entrega las URLs con token al usuario logueado.
 widget.get('/url', (c) => guarded(c, '/api/widget/url', async () => {
   const token = widgetToken(c)
+  const expensesToken = String(c.env.EXPENSES_SHORTCUT_TOKEN ?? '').trim()
   if (!token) {
     return { status: 503, payload: { success: false, data: { text: 'La API de widgets no está configurada (falta WIDGET_TOKEN)' }, error: { code: 'NOT_CONFIGURED' } } }
   }
@@ -98,6 +101,9 @@ widget.get('/url', (c) => guarded(c, '/api/widget/url', async () => {
         habits_url: `${url.origin}/api/widget/habits?token=${encodeURIComponent(token)}`,
         habits_image_url: `${url.origin}/api/widget/habits?token=${encodeURIComponent(token)}&image=auto`,
         reminders_url: `${url.origin}/api/widget/reminders?token=${encodeURIComponent(token)}`,
+        expenses_url: expensesToken
+          ? `${url.origin}/api/widget/expenses?token=${encodeURIComponent(expensesToken)}`
+          : null,
       },
     },
   }
@@ -339,5 +345,7 @@ widget.post('/reminders', (c) => guarded(c, '/api/widget/reminders', async () =>
     extraLog: { auth: 'ok', dbMs },
   }
 }))
+
+widget.route('/expenses', widgetExpenses)
 
 export default widget
