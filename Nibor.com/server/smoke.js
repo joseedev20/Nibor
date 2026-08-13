@@ -1334,9 +1334,9 @@ async function run() {
   })
   if (
     widgetExpenseFromAccountMessage.movimiento?.monto !== 20000
-    || widgetExpenseFromAccountMessage.movimiento?.descripcion !== 'Transferencia a *3104772928'
+    || widgetExpenseFromAccountMessage.movimiento?.descripcion !== 'Bancolombia: Transferiste $20,000.00 desde tu cuenta 5702 a la cuenta *3104772928 el 12/08/2026 a las 18:07.'
   ) {
-    throw new Error(`Widget de gastos no detecto monto/destino de mensaje con cuenta: ${JSON.stringify(widgetExpenseFromAccountMessage)}`)
+    throw new Error(`Widget de gastos no detecto monto/descripcion de mensaje con cuenta: ${JSON.stringify(widgetExpenseFromAccountMessage)}`)
   }
 
   const widgetExpenseFromNameMessage = await post('/widget/expenses?token=smoke-expenses-token', {
@@ -1346,9 +1346,9 @@ async function run() {
   })
   if (
     widgetExpenseFromNameMessage.movimiento?.monto !== 105600
-    || widgetExpenseFromNameMessage.movimiento?.descripcion !== 'Transferencia a JHON MORERAS'
+    || widgetExpenseFromNameMessage.movimiento?.descripcion !== 'Bancolombia: JOSE, transferiste $105,600.00 a la llave 3232000500 desde tu cuenta *5702 a JHON MORERAS el 08/08/26 a las 13:09.'
   ) {
-    throw new Error(`Widget de gastos no detecto monto/destino de mensaje con llave: ${JSON.stringify(widgetExpenseFromNameMessage)}`)
+    throw new Error(`Widget de gastos no detecto monto/descripcion de mensaje con llave: ${JSON.stringify(widgetExpenseFromNameMessage)}`)
   }
 
   const widgetExpenseFromBadMessage = await expectFailure('/widget/expenses?token=smoke-expenses-token', {

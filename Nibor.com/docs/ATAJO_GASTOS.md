@@ -74,13 +74,14 @@ con:
 
 - El backend detecta el monto buscando el patrón `transferiste $<monto>`
   dentro de `mensaje`. Si no lo encuentra, responde `400 BAD_REQUEST`.
-- Si no se manda `descripcion`, se arma sola a partir del destinatario del
-  mensaje:
-  - Transferencia a cuenta (`...a la cuenta *3104772928...`) → `Transferencia a *3104772928`.
-  - Transferencia Bre-B/llave (`...desde tu cuenta *5702 a JHON MORERAS el...`) → `Transferencia a JHON MORERAS`.
-  - Si no reconoce ningún destinatario, usa `Transferencia Bancolombia`.
-- `monto`/`descripcion` explícitos en el body siempre tienen prioridad sobre
-  lo detectado en `mensaje` (se puede seguir usando el flujo manual normal).
+- Si no se manda `descripcion`, se usa el **mensaje completo**, recortando
+  solo el relleno final ("¿Dudas? Llamanos...", "Con Bre-b es de una y
+  gratis...") — se conserva todo hasta la hora de la transacción. Así no
+  importa si el mensaje es una transferencia a cuenta o a llave Bre-B con
+  nombre: siempre queda el texto completo, sin adivinar qué parte extraer.
+- **No mandes `descripcion` en el body si quieres que se arme sola** — si
+  la mandas (aunque sea un texto viejo dejado de pruebas), esa siempre gana
+  sobre lo detectado en `mensaje`.
 - `categoria`, `fecha` y `request_id` funcionan igual que siempre; siguen
   siendo obligatorios (`categoria`/`categoria_id`) o recomendados
   (`request_id`).

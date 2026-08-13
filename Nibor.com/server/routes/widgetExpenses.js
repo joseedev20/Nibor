@@ -84,13 +84,14 @@ async function resolveExpenseCategory(db, body) {
   return { category: matches[0] }
 }
 
-// Notificaciones de transferencias salientes de Bancolombia. Hay dos
-// plantillas: "a la cuenta <numero>" (destino = cuenta) y Bre-B "a la
-// llave <llave> desde tu cuenta *<origen> a <NOMBRE> el <fecha>" (destino
-// = nombre). El monto siempre aparece como "transferiste $<monto>".
+// Notificaciones de transferencias salientes de Bancolombia. El monto
+// siempre aparece como "transferiste $<monto>". Para la descripción se usa
+// el mensaje completo (no solo el destinatario) porque el formato varía
+// entre plantillas (cuenta directa vs llave Bre-B con nombre) y el texto
+// completo nunca deja afuera información útil; solo se recorta el relleno
+// de "¿Dudas? Llamanos..." al final, quedándose con todo hasta la hora.
 const TRANSFER_AMOUNT_PATTERN = /transferiste[^$]*\$\s*([\d]{1,3}(?:,\d{3})*(?:\.\d{1,2})?)/i
-const TRANSFER_ACCOUNT_PATTERN = /a la cuenta\s+(\*?\d+)/i
-const TRANSFER_NAME_PATTERN = /desde tu cuenta\s+\*?\d+\s+a\s+([A-ZÁÉÍÓÚÑ .]+?)\s+el\s+\d{1,2}\/\d{1,2}\/\d{2,4}/i
+const TRANSFER_TIMESTAMP_CUTOFF = /^(.*?a las\s+\d{1,2}:\d{2}\.?)/is
 
 function extractMontoFromMensaje(mensaje) {
   const match = mensaje.match(TRANSFER_AMOUNT_PATTERN)
@@ -99,12 +100,10 @@ function extractMontoFromMensaje(mensaje) {
   return Number.isFinite(value) ? value : null
 }
 
-function extractDestinoFromMensaje(mensaje) {
-  const accountMatch = mensaje.match(TRANSFER_ACCOUNT_PATTERN)
-  if (accountMatch) return accountMatch[1].startsWith('*') ? accountMatch[1] : `*${accountMatch[1]}`
-
-  const nameMatch = mensaje.match(TRANSFER_NAME_PATTERN)
-  return nameMatch ? nameMatch[1].trim() : null
+function descripcionFromMensaje(mensaje) {
+  const cutoffMatch = mensaje.match(TRANSFER_TIMESTAMP_CUTOFF)
+  const cleaned = (cutoffMatch ? cutoffMatch[1] : mensaje).replace(/\s+/g, ' ').trim()
+  return cleaned.length > 200 ? cleaned.slice(0, 200) : cleaned
 }
 
 function describeReceived(value, max = 120) {
@@ -123,8 +122,7 @@ function normalizeExpense(body, c) {
 
   let descripcion = String(body.descripcion ?? '').trim()
   if (!descripcion && mensaje) {
-    const destino = extractDestinoFromMensaje(mensaje)
-    descripcion = destino ? `Transferencia a ${destino}` : 'Transferencia Bancolombia'
+    descripcion = descripcionFromMensaje(mensaje)
   }
 
   const fecha = String(body.fecha ?? '').trim() || bogotaToday()
