@@ -84,13 +84,20 @@ async function resolveExpenseCategory(db, body) {
   return { category: matches[0] }
 }
 
-// Notificaciones de transferencias salientes de Bancolombia. El monto
-// siempre aparece como "transferiste $<monto>". Para la descripción se usa
-// el mensaje completo (no solo el destinatario) porque el formato varía
-// entre plantillas (cuenta directa vs llave Bre-B con nombre) y el texto
-// completo nunca deja afuera información útil; solo se recorta el relleno
-// de "¿Dudas? Llamanos..." al final, quedándose con todo hasta la hora.
-const TRANSFER_AMOUNT_PATTERN = /transferiste[^$]*\$\s*([\d]{1,3}(?:,\d{3})*(?:\.\d{1,2})?)/i
+// Notificaciones de Bancolombia de dinero que SALE de la cuenta. El monto
+// aparece como "<verbo> $<monto>" ("transferiste", "pagaste" por QR, etc.).
+// Agregar un verbo nuevo aquí es agregar una palabra a esta lista — nunca
+// agregar verbos de dinero ENTRANTE (recibiste, consignaron...), porque este
+// endpoint solo crea gastos. Para la descripción se usa el mensaje completo
+// (no solo el destinatario) porque el formato varía entre plantillas (cuenta
+// directa, llave Bre-B con nombre, QR) y el texto completo nunca deja afuera
+// información útil; solo se recorta el relleno de "¿Dudas? Llamanos..." al
+// final, quedándose con todo hasta la hora.
+const OUTGOING_MONEY_VERBS = ['transferiste', 'pagaste', 'retiraste', 'compraste']
+const TRANSFER_AMOUNT_PATTERN = new RegExp(
+  `\\b(?:${OUTGOING_MONEY_VERBS.join('|')})\\b[^$]*\\$\\s*([\\d]{1,3}(?:,\\d{3})*(?:\\.\\d{1,2})?)`,
+  'i',
+)
 const TRANSFER_TIMESTAMP_CUTOFF = /^(.*?a las\s+\d{1,2}:\d{2}\.?)/is
 
 function extractMontoFromMensaje(mensaje) {
@@ -136,7 +143,7 @@ function normalizeExpense(body, c) {
   if (!Number.isFinite(monto) || monto <= 0) {
     return {
       error: mensaje
-        ? `No se pudo detectar el monto en el mensaje (se esperaba "transferiste $monto"). Mensaje recibido: ${describeReceived(mensaje, 300)}`
+        ? `No se pudo detectar el monto en el mensaje (se esperaba "${OUTGOING_MONEY_VERBS[0]} $monto" o similar: ${OUTGOING_MONEY_VERBS.join(', ')}). Mensaje recibido: ${describeReceived(mensaje, 300)}`
         : `El monto debe ser mayor a 0. Valor de "monto" recibido: ${describeReceived(body.monto)}`,
       status: 400,
       code: 'BAD_REQUEST',

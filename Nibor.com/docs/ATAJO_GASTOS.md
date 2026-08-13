@@ -72,8 +72,13 @@ con:
 }
 ```
 
-- El backend detecta el monto buscando el patrón `transferiste $<monto>`
-  dentro de `mensaje`. Si no lo encuentra, responde `400 BAD_REQUEST`.
+- El backend detecta el monto buscando `<verbo> $<monto>` dentro de
+  `mensaje`, con estos verbos reconocidos: `transferiste`, `pagaste`,
+  `retiraste`, `compraste` (lista en `OUTGOING_MONEY_VERBS` en
+  `server/routes/widgetExpenses.js`, fácil de ampliar). Si no encuentra
+  ninguno, responde `400 BAD_REQUEST`. A propósito **no** incluye verbos de
+  dinero entrante (`recibiste`, `consignaron`...) porque este endpoint solo
+  crea gastos.
 - Si no se manda `descripcion`, se usa el **mensaje completo**, recortando
   solo el relleno final ("¿Dudas? Llamanos...", "Con Bre-b es de una y
   gratis...") — se conserva todo hasta la hora de la transacción. Así no

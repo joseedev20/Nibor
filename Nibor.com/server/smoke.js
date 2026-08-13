@@ -1351,6 +1351,18 @@ async function run() {
     throw new Error(`Widget de gastos no detecto monto/descripcion de mensaje con llave: ${JSON.stringify(widgetExpenseFromNameMessage)}`)
   }
 
+  const widgetExpenseFromQrMessage = await post('/widget/expenses?token=smoke-expenses-token', {
+    mensaje: 'Bancolombia: JOSE NICOLAS BORJA ARRIAGA pagaste $8,500.00 por codigo QR desde tu cuenta *5702 a la llave 0091542078 el 12/08/2026 a las 19:47. Con codigo QR es facil y de una. Dudas al 018000912345',
+    categoria_id: expenseCategory.id,
+    request_id: `${widgetExpenseRequestId}-mensaje-qr`,
+  })
+  if (
+    widgetExpenseFromQrMessage.movimiento?.monto !== 8500
+    || widgetExpenseFromQrMessage.movimiento?.descripcion !== 'Bancolombia: JOSE NICOLAS BORJA ARRIAGA pagaste $8,500.00 por codigo QR desde tu cuenta *5702 a la llave 0091542078 el 12/08/2026 a las 19:47.'
+  ) {
+    throw new Error(`Widget de gastos no detecto monto/descripcion de mensaje de pago QR: ${JSON.stringify(widgetExpenseFromQrMessage)}`)
+  }
+
   const widgetExpenseFromBadMessage = await expectFailure('/widget/expenses?token=smoke-expenses-token', {
     method: 'POST',
     body: JSON.stringify({
