@@ -1363,6 +1363,37 @@ async function run() {
     throw new Error(`Widget de gastos no detecto monto/descripcion de mensaje de pago QR: ${JSON.stringify(widgetExpenseFromQrMessage)}`)
   }
 
+  const autoIdMensaje = `Bancolombia: Transferiste $32,000.00 desde tu cuenta 5702 a la cuenta *9988776655 el 12/08/2026 a las 20:${notificationSmokeRunId.toString().padStart(2, '0').slice(-2)}. ¿Dudas? Llamanos al 018000931987. Estamos cerca.`
+  const widgetExpenseAutoId = await post('/widget/expenses?token=smoke-expenses-token', {
+    mensaje: autoIdMensaje,
+    categoria_id: expenseCategory.id,
+  })
+  if (!widgetExpenseAutoId.movimiento?.request_id || widgetExpenseAutoId.duplicado !== false) {
+    throw new Error(`Widget de gastos no genero request_id automatico desde el mensaje: ${JSON.stringify(widgetExpenseAutoId)}`)
+  }
+
+  const widgetExpenseAutoIdRepeat = await post('/widget/expenses?token=smoke-expenses-token', {
+    mensaje: autoIdMensaje,
+    categoria_id: expenseCategory.id,
+  })
+  if (
+    widgetExpenseAutoIdRepeat.duplicado !== true
+    || widgetExpenseAutoIdRepeat.movimiento?.id !== widgetExpenseAutoId.movimiento.id
+  ) {
+    throw new Error('El mismo mensaje sin request_id no fue idempotente (debio dar el mismo movimiento)')
+  }
+
+  const widgetExpenseAutoIdDifferent = await post('/widget/expenses?token=smoke-expenses-token', {
+    mensaje: autoIdMensaje.replace('$32,000.00', '$33,000.00'),
+    categoria_id: expenseCategory.id,
+  })
+  if (
+    widgetExpenseAutoIdDifferent.duplicado !== false
+    || widgetExpenseAutoIdDifferent.movimiento?.id === widgetExpenseAutoId.movimiento.id
+  ) {
+    throw new Error('Un mensaje distinto sin request_id genero el mismo id que otro mensaje (colision de hash)')
+  }
+
   const widgetExpenseFromBadMessage = await expectFailure('/widget/expenses?token=smoke-expenses-token', {
     method: 'POST',
     body: JSON.stringify({

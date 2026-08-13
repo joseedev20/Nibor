@@ -119,7 +119,21 @@ function describeReceived(value, max = 120) {
   return str.length > max ? `"${str.slice(0, max)}…"` : `"${str}"`
 }
 
-function normalizeExpense(body, c) {
+// Cuando el Atajo manda `mensaje` sin `request_id` (generar un UUID desde
+// Atajos es incómodo), se deriva uno solo del texto del mensaje. El mensaje
+// de Bancolombia trae la hora exacta al minuto, así que dos pagos reales del
+// mismo monto el mismo día no chocan entre sí; el mismo mensaje repetido
+// (reintento del Atajo) sí da el mismo hash y queda deduplicado.
+async function hashMensaje(mensaje) {
+  const bytes = new TextEncoder().encode(mensaje)
+  const digest = await crypto.subtle.digest('SHA-256', bytes)
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+    .slice(0, 40)
+}
+
+async function normalizeExpense(body, c) {
   const mensaje = String(body.mensaje ?? '').trim()
 
   const montoFromBody = toNumber(body.monto)
@@ -133,12 +147,16 @@ function normalizeExpense(body, c) {
   }
 
   const fecha = String(body.fecha ?? '').trim() || bogotaToday()
-  const request_id = String(
+  let request_id = String(
     body.request_id
       ?? body.idempotency_key
       ?? c.req.header('idempotency-key')
       ?? '',
   ).trim()
+
+  if (!request_id && mensaje) {
+    request_id = await hashMensaje(mensaje)
+  }
 
   if (!Number.isFinite(monto) || monto <= 0) {
     return {
@@ -264,7 +282,7 @@ widgetExpenses.post('/', (c) => guarded(c, '/api/widget/expenses', async () => {
   const body = await readJson(c)
   if (!body) return errorResult(400, 'Body JSON inválido', 'BAD_REQUEST')
 
-  const normalized = normalizeExpense(body, c)
+  const normalized = await normalizeExpense(body, c)
   if (normalized.error) return errorResult(normalized.status, normalized.error, normalized.code)
 
   const dbStart = Date.now()

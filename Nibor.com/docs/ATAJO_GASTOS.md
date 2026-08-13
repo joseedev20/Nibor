@@ -67,8 +67,7 @@ con:
 ```json
 {
   "mensaje": "Bancolombia: Transferiste $20,000.00 desde tu cuenta 5702 a la cuenta *3104772928 el 12/08/2026 a las 18:07. ¿Dudas? Llamanos al 018000931987. Estamos cerca.",
-  "categoria": "Transferencias",
-  "request_id": "UUID-generado-por-el-atajo"
+  "categoria": "Transferencias"
 }
 ```
 
@@ -87,9 +86,14 @@ con:
 - **No mandes `descripcion` en el body si quieres que se arme sola** — si
   la mandas (aunque sea un texto viejo dejado de pruebas), esa siempre gana
   sobre lo detectado en `mensaje`.
-- `categoria`, `fecha` y `request_id` funcionan igual que siempre; siguen
-  siendo obligatorios (`categoria`/`categoria_id`) o recomendados
-  (`request_id`).
+- **`request_id` es opcional cuando mandas `mensaje`.** Si no lo mandas, el
+  backend calcula uno solo con un hash del texto completo del mensaje. Como
+  el mensaje de Bancolombia trae la hora exacta al minuto, dos pagos reales
+  del mismo monto el mismo día no chocan entre sí; si el mismo mensaje llega
+  dos veces (reintento del Atajo), da el mismo hash y no se duplica. No hace
+  falta el paso de generar UUID/GUID en Atajos para este flujo.
+- `categoria`/`categoria_id` y `fecha` funcionan igual que siempre;
+  `categoria`/`categoria_id` sigue siendo obligatorio.
 
 ### Automatización sin tocar el teléfono
 
@@ -99,9 +103,9 @@ recibida** → app **Bancolombia** → sin necesidad de confirmar cada vez:
 1. **Notificación recibida** (dispara al llegar cualquier notificación de
    Bancolombia).
 2. **Obtener texto de la notificación** (o "Contenido de texto enriquecido").
-3. **Diccionario**: `mensaje` = texto del paso 2, `categoria` = texto fijo
-   `Transferencias`, `request_id` = combinación de fecha formateada
-   (`yyyyMMddHHmmss`) + número aleatorio, igual que en el Atajo manual.
+3. **Diccionario**: solo dos campos — `mensaje` = texto del paso 2,
+   `categoria` = texto fijo `Transferencias`. Sin `request_id`, el backend
+   lo genera solo (ver arriba).
 4. **Obtener contenido de URL** → `POST` → `expenses_url` → Cuerpo JSON con
    el Diccionario del paso 3.
 5. Desactivar "Preguntar antes de ejecutar" en la automatización para que
