@@ -1,6 +1,6 @@
 # Estado compartido — Nibor.com
 
-Actualizado: 2026-07-28 21:12 -05:00
+Actualizado: 2026-08-12 -05:00
 
 ## Decisión activa
 
@@ -52,6 +52,10 @@ Actualizado: 2026-07-28 21:12 -05:00
 - Access ya tiene dos correos exactos autorizados y OTP por correo; `workers.dev`/Preview URLs siguen desactivados. El Worker se despliega desde Git en `niborapp.com`.
 
 ## Handoff actual
+
+- 2026-08-12: Claude agregó detección automática de transferencias de Bancolombia en `POST /api/widget/expenses`: el body acepta un campo nuevo `mensaje` con el texto crudo de la notificación; si `monto`/`descripcion` no vienen explícitos, se extraen del mensaje (patrón `transferiste $<monto>`; destino de cuenta `a la cuenta *NNN` o de llave Bre-B `desde tu cuenta *NNN a NOMBRE el fecha`). `categoria`/`categoria_id` y `request_id` siguen siendo obligatorios como antes; el flujo manual (monto+descripción explícitos) no cambió. Doc actualizado en `docs/ATAJO_GASTOS.md` con el flujo de automatización de Atajos por notificación (sin interacción). Smoke cubre los dos formatos de mensaje y el rechazo cuando no hay patrón de transferencia. npm test, build y smoke aislado OK.
+- 2026-08-12: Claude corrigió el modo oscuro automático (menú `App.vue`): versiones previas guardaban `theme` en cada visita aunque el usuario nunca tocara el botón, así que todo el mundo tenía ya un valor guardado que bloqueaba el horario automático (18:00–08:59 oscuro, 09:00–17:59 claro, hora de Bogotá). Se agregó la bandera `theme-override`, que solo se marca al usar el botón de verdad; sin ella el tema sigue el reloj y se revisa cada minuto. Verificado con Playwright simulando la hora del sistema en los bordes exactos (8:59/9:00, 17:59/18:00) y el caso real reportado (theme viejo + hora nocturna).
+- 2026-08-12: Claude arregló el menú lateral (`App.vue`): el `<nav>` interno no tenía `overflow-y-auto`/`min-h-0`, así que con poco alto de ventana (zoom alto) los últimos ítems (Bansky, Configuración, Cerrar sesión) quedaban fuera del viewport sin ninguna forma de alcanzarlos. Ahora el `<nav>` central scrollea solo, dejando logo y pie de menú siempre visibles. Verificado con Playwright en viewport de 500px de alto.
 
 - 2026-07-28: Codex completó y publicó `GET/POST /api/widget/expenses` para registrar gastos desde Atajos de iPhone. `EXPENSES_SHORTCUT_TOKEN` existe como secreto remoto, D1 no tiene migraciones pendientes y el Worker quedó publicado como versión `9864b80d-cfb1-43d4-97a3-91df80457c82`. En Cloudflare Access se creó la aplicación `Atajo gastos Nibor` únicamente para `niborapp.com/api/widget/expenses`, con política `Bypass` + `Everyone`. Verificación sin insertar gastos reales: la ruta sin token llega al Worker y devuelve el 404 deliberado; `/api/movements` y `/api/widget/url` siguen protegidos con 302.
 

@@ -84,9 +84,43 @@ async function resolveExpenseCategory(db, body) {
   return { category: matches[0] }
 }
 
+// Notificaciones de transferencias salientes de Bancolombia. Hay dos
+// plantillas: "a la cuenta <numero>" (destino = cuenta) y Bre-B "a la
+// llave <llave> desde tu cuenta *<origen> a <NOMBRE> el <fecha>" (destino
+// = nombre). El monto siempre aparece como "transferiste $<monto>".
+const TRANSFER_AMOUNT_PATTERN = /transferiste[^$]*\$\s*([\d]{1,3}(?:,\d{3})*(?:\.\d{1,2})?)/i
+const TRANSFER_ACCOUNT_PATTERN = /a la cuenta\s+(\*?\d+)/i
+const TRANSFER_NAME_PATTERN = /desde tu cuenta\s+\*?\d+\s+a\s+([A-ZÁÉÍÓÚÑ .]+?)\s+el\s+\d{1,2}\/\d{1,2}\/\d{2,4}/i
+
+function extractMontoFromMensaje(mensaje) {
+  const match = mensaje.match(TRANSFER_AMOUNT_PATTERN)
+  if (!match) return null
+  const value = Number(match[1].replace(/,/g, ''))
+  return Number.isFinite(value) ? value : null
+}
+
+function extractDestinoFromMensaje(mensaje) {
+  const accountMatch = mensaje.match(TRANSFER_ACCOUNT_PATTERN)
+  if (accountMatch) return accountMatch[1].startsWith('*') ? accountMatch[1] : `*${accountMatch[1]}`
+
+  const nameMatch = mensaje.match(TRANSFER_NAME_PATTERN)
+  return nameMatch ? nameMatch[1].trim() : null
+}
+
 function normalizeExpense(body, c) {
-  const monto = toNumber(body.monto)
-  const descripcion = String(body.descripcion ?? '').trim()
+  const mensaje = String(body.mensaje ?? '').trim()
+
+  const montoFromBody = toNumber(body.monto)
+  const monto = Number.isFinite(montoFromBody) && montoFromBody > 0
+    ? montoFromBody
+    : (mensaje ? extractMontoFromMensaje(mensaje) : null)
+
+  let descripcion = String(body.descripcion ?? '').trim()
+  if (!descripcion && mensaje) {
+    const destino = extractDestinoFromMensaje(mensaje)
+    descripcion = destino ? `Transferencia a ${destino}` : 'Transferencia Bancolombia'
+  }
+
   const fecha = String(body.fecha ?? '').trim() || bogotaToday()
   const request_id = String(
     body.request_id
@@ -96,7 +130,13 @@ function normalizeExpense(body, c) {
   ).trim()
 
   if (!Number.isFinite(monto) || monto <= 0) {
-    return { error: 'El monto debe ser mayor a 0', status: 400, code: 'BAD_REQUEST' }
+    return {
+      error: mensaje
+        ? 'No se pudo detectar el monto en el mensaje (se esperaba "transferiste $monto")'
+        : 'El monto debe ser mayor a 0',
+      status: 400,
+      code: 'BAD_REQUEST',
+    }
   }
   if (!descripcion) return { error: 'La descripción es obligatoria', status: 400, code: 'BAD_REQUEST' }
   if (descripcion.length > 200) {

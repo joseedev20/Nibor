@@ -1327,6 +1327,42 @@ async function run() {
     throw new Error('El gasto idempotente no quedo exactamente una vez en movements')
   }
 
+  const widgetExpenseFromAccountMessage = await post('/widget/expenses?token=smoke-expenses-token', {
+    mensaje: 'Bancolombia: Transferiste $20,000.00 desde tu cuenta 5702 a la cuenta *3104772928 el 12/08/2026 a las 18:07. ¿Dudas? Llamanos al 018000931987. Estamos cerca.',
+    categoria_id: expenseCategory.id,
+    request_id: `${widgetExpenseRequestId}-mensaje-cuenta`,
+  })
+  if (
+    widgetExpenseFromAccountMessage.movimiento?.monto !== 20000
+    || widgetExpenseFromAccountMessage.movimiento?.descripcion !== 'Transferencia a *3104772928'
+  ) {
+    throw new Error(`Widget de gastos no detecto monto/destino de mensaje con cuenta: ${JSON.stringify(widgetExpenseFromAccountMessage)}`)
+  }
+
+  const widgetExpenseFromNameMessage = await post('/widget/expenses?token=smoke-expenses-token', {
+    mensaje: 'Bancolombia: JOSE, transferiste $105,600.00 a la llave 3232000500 desde tu cuenta *5702 a JHON MORERAS el 08/08/26 a las 13:09. Con Bre-b es de una y gratis. Dudas al 018000912345',
+    categoria_id: expenseCategory.id,
+    request_id: `${widgetExpenseRequestId}-mensaje-llave`,
+  })
+  if (
+    widgetExpenseFromNameMessage.movimiento?.monto !== 105600
+    || widgetExpenseFromNameMessage.movimiento?.descripcion !== 'Transferencia a JHON MORERAS'
+  ) {
+    throw new Error(`Widget de gastos no detecto monto/destino de mensaje con llave: ${JSON.stringify(widgetExpenseFromNameMessage)}`)
+  }
+
+  const widgetExpenseFromBadMessage = await expectFailure('/widget/expenses?token=smoke-expenses-token', {
+    method: 'POST',
+    body: JSON.stringify({
+      mensaje: 'Bancolombia: Tu clave dinamica es 123456, no la compartas con nadie.',
+      categoria_id: expenseCategory.id,
+      request_id: `${widgetExpenseRequestId}-mensaje-sin-monto`,
+    }),
+  })
+  if (widgetExpenseFromBadMessage.error?.code !== 'BAD_REQUEST') {
+    throw new Error('Widget de gastos no rechazo mensaje sin patron de transferencia')
+  }
+
   const widgetHabit = await post('/habits', { name: `Smoke widget ${Date.now()}`, target_per_day: 1 })
   if (!widgetHabit.id) throw new Error('No se creo habito smoke para el widget')
   await expectFailure('/widget/habits?token=token-incorrecto', {
