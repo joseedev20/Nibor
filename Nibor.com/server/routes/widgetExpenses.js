@@ -107,6 +107,12 @@ function extractDestinoFromMensaje(mensaje) {
   return nameMatch ? nameMatch[1].trim() : null
 }
 
+function describeReceived(value, max = 120) {
+  const str = String(value ?? '')
+  if (!str) return '(vacío)'
+  return str.length > max ? `"${str.slice(0, max)}…"` : `"${str}"`
+}
+
 function normalizeExpense(body, c) {
   const mensaje = String(body.mensaje ?? '').trim()
 
@@ -132,22 +138,36 @@ function normalizeExpense(body, c) {
   if (!Number.isFinite(monto) || monto <= 0) {
     return {
       error: mensaje
-        ? 'No se pudo detectar el monto en el mensaje (se esperaba "transferiste $monto")'
-        : 'El monto debe ser mayor a 0',
+        ? `No se pudo detectar el monto en el mensaje (se esperaba "transferiste $monto"). Mensaje recibido: ${describeReceived(mensaje, 300)}`
+        : `El monto debe ser mayor a 0. Valor de "monto" recibido: ${describeReceived(body.monto)}`,
       status: 400,
       code: 'BAD_REQUEST',
     }
   }
-  if (!descripcion) return { error: 'La descripción es obligatoria', status: 400, code: 'BAD_REQUEST' }
+  if (!descripcion) {
+    return {
+      error: `La descripción es obligatoria. Campos recibidos: descripcion=${describeReceived(body.descripcion)}, mensaje=${describeReceived(body.mensaje)}`,
+      status: 400,
+      code: 'BAD_REQUEST',
+    }
+  }
   if (descripcion.length > 200) {
-    return { error: 'La descripción no puede superar 200 caracteres', status: 400, code: 'BAD_REQUEST' }
+    return {
+      error: `La descripción no puede superar 200 caracteres (tiene ${descripcion.length}). Recibida: ${describeReceived(descripcion, 60)}`,
+      status: 400,
+      code: 'BAD_REQUEST',
+    }
   }
   if (!isValidDate(fecha)) {
-    return { error: 'La fecha debe existir y tener formato YYYY-MM-DD', status: 400, code: 'BAD_REQUEST' }
+    return {
+      error: `La fecha debe existir y tener formato YYYY-MM-DD. Valor recibido: ${describeReceived(fecha)}`,
+      status: 400,
+      code: 'BAD_REQUEST',
+    }
   }
   if (!REQUEST_ID_PATTERN.test(request_id)) {
     return {
-      error: 'request_id debe ser un UUID o identificador de 8 a 128 caracteres',
+      error: `request_id debe ser un UUID o identificador de 8 a 128 caracteres (a-z, A-Z, 0-9, ".", "_", ":", "-"). Valor recibido: ${describeReceived(request_id)} (longitud: ${request_id.length})`,
       status: 400,
       code: 'BAD_REQUEST',
     }
