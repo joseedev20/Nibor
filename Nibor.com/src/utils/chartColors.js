@@ -26,13 +26,16 @@ export const POSITIVE_COLOR = { light: '#047857', dark: '#059669' }
 export const NEGATIVE_COLOR = { light: '#BE123C', dark: '#F43F5E' }
 
 // Rampa de estado (semantic heat) rojo→naranja→amarillo→verde para magnitudes
-// 0–100% que significan "qué tan bien" (cumplimiento, progreso). Ancla en
-// NEGATIVE_COLOR/POSITIVE_COLOR para consistencia con el resto de la app;
-// pasos intermedios verificados con scripts/validate_palette.js del skill
-// dataviz (contrast() ≥ 3:1 contra la superficie de cada modo).
+// 0–100% que significan "qué tan bien" (cumplimiento, progreso). Versión
+// pastel: contraste bajo contra blanco por diseño (colores claros = poco
+// contraste, es física del color, no un descuido), mitigado con un borde
+// visible en cada celda (ver `itemStyle.borderColor` en HabitosView.vue) en
+// vez de oscurecer el color. Igual en ambos modos porque el pastel ya
+// contrasta bien sobre superficie oscura.
+export const COMPLETION_RAMP_PASTEL = ['#fda4af', '#fdba74', '#fcd34d', '#bef264', '#6ee7b7']
 export const COMPLETION_RAMP = {
-  light: ['#BE123C', '#C2410C', '#B45309', '#4D7C0F', '#047857'],
-  dark: ['#F43F5E', '#F97316', '#EAB308', '#84CC16', '#059669'],
+  light: COMPLETION_RAMP_PASTEL,
+  dark: COMPLETION_RAMP_PASTEL,
 }
 
 /** Color de serie para una plataforma según el modo ('light' | 'dark'). */

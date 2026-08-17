@@ -515,7 +515,9 @@ const calendarOption = computed(() => ({
     type: 'heatmap',
     coordinateSystem: 'calendar',
     data: calendarData.value,
-    itemStyle: { borderColor: ink.value.surface, borderWidth: 2 },
+    // Borde visible (no solo el gap color-superficie) porque los tonos
+    // pastel de COMPLETION_RAMP tienen poco contraste propio contra blanco.
+    itemStyle: { borderColor: ink.value.axisLine, borderWidth: 1.5 },
   }],
 }))
 
