@@ -25,6 +25,16 @@ export const OTHER_COLOR = { light: '#52525B', dark: '#A1A1AA' }
 export const POSITIVE_COLOR = { light: '#047857', dark: '#059669' }
 export const NEGATIVE_COLOR = { light: '#BE123C', dark: '#F43F5E' }
 
+// Rampa de estado (semantic heat) rojo→naranja→amarillo→verde para magnitudes
+// 0–100% que significan "qué tan bien" (cumplimiento, progreso). Ancla en
+// NEGATIVE_COLOR/POSITIVE_COLOR para consistencia con el resto de la app;
+// pasos intermedios verificados con scripts/validate_palette.js del skill
+// dataviz (contrast() ≥ 3:1 contra la superficie de cada modo).
+export const COMPLETION_RAMP = {
+  light: ['#BE123C', '#C2410C', '#B45309', '#4D7C0F', '#047857'],
+  dark: ['#F43F5E', '#F97316', '#EAB308', '#84CC16', '#059669'],
+}
+
 /** Color de serie para una plataforma según el modo ('light' | 'dark'). */
 export function platformSeriesColor(nombre, mode, fallbackIndex = 0) {
   return PLATFORM_SERIES[nombre]?.[mode]

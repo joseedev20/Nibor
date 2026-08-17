@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { formatDate } from '../utils/format.js'
 import VChart from '../charts/setup.js'
 import { useIsDark } from '../composables/useIsDark.js'
-import { chartInk } from '../utils/chartColors.js'
+import { chartInk, COMPLETION_RAMP } from '../utils/chartColors.js'
 import NotificationModuleSettings from '../components/NotificationModuleSettings.vue'
 
 const DAYS = [
@@ -422,11 +422,6 @@ const chartMode = computed(() => (isDark.value ? 'dark' : 'light'))
 const ink = computed(() => chartInk(chartMode.value))
 const calendarFilter = ref('all')
 
-// Rampa secuencial de un solo matiz (magnitud de cumplimiento)
-const EMERALD_RAMP = {
-  light: ['#d1fae5', '#6ee7b7', '#10b981', '#047857'],
-  dark: ['#064e3b', '#047857', '#10b981', '#6ee7b7'],
-}
 const MONTH_SHORT = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
 
 function shortDate(iso) {
@@ -502,7 +497,7 @@ const calendarData = computed(() => {
 
 const calendarOption = computed(() => ({
   tooltip: { ...chartTooltip.value, formatter: (p) => `${formatDate(p.value[0])}: ${p.value[1]} %` },
-  visualMap: { min: 0, max: 100, show: false, inRange: { color: EMERALD_RAMP[chartMode.value] } },
+  visualMap: { min: 0, max: 100, show: false, inRange: { color: COMPLETION_RAMP[chartMode.value] } },
   calendar: {
     range: calendarRange.value,
     cellSize: ['auto', 15],
@@ -516,7 +511,12 @@ const calendarOption = computed(() => ({
     itemStyle: { color: chartMode.value === 'dark' ? '#27272a' : '#f4f4f5', borderColor: ink.value.surface, borderWidth: 2 },
     splitLine: { show: false },
   },
-  series: [{ type: 'heatmap', coordinateSystem: 'calendar', data: calendarData.value }],
+  series: [{
+    type: 'heatmap',
+    coordinateSystem: 'calendar',
+    data: calendarData.value,
+    itemStyle: { borderColor: ink.value.surface, borderWidth: 2 },
+  }],
 }))
 
 onMounted(loadAll)
@@ -690,7 +690,7 @@ onMounted(loadAll)
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 class="text-sm font-semibold">Calendario de actividad</h2>
-            <p class="text-xs text-zinc-500 dark:text-zinc-400">Últimos 6 meses · más verde = más cumplido</p>
+            <p class="text-xs text-zinc-500 dark:text-zinc-400">Últimos 6 meses · rojo = 0 % cumplido, verde = 100 %</p>
           </div>
           <div class="flex flex-wrap gap-1.5">
             <button
