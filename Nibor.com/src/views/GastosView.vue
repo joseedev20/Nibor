@@ -23,8 +23,9 @@ const expenseCategories = computed(() => categories.value.filter((category) => c
 const incomeCategories = computed(() => categories.value.filter((category) => category.tipo === 'ingreso'))
 const formCategories = computed(() => form.value.tipo === 'ingreso' ? incomeCategories.value : expenseCategories.value)
 const appliedSubscriptionIds = computed(() => new Set(movements.value
-  .filter((movement) => movement.subscription_id !== null && movement.subscription_id !== undefined)
+  .filter((movement) => movement.subscription_id !== null && movement.subscription_id !== undefined && movement.id !== form.value.id)
   .map((movement) => Number(movement.subscription_id))))
+const formSubscriptions = computed(() => subscriptions.value.filter((subscription) => subscription.tipo === form.value.tipo))
 const pendingSubscriptions = computed(() => subscriptions.value.filter((subscription) => !appliedSubscriptionIds.value.has(Number(subscription.id))))
 const fixedIncomeTotal = computed(() => subscriptions.value
   .filter((subscription) => subscription.tipo === 'ingreso')
@@ -56,6 +57,7 @@ function emptyForm(tipo = 'gasto') {
     fecha: date,
     tipo,
     categoria_id: '',
+    subscription_id: '',
     descripcion: '',
     monto: '',
   }
@@ -122,6 +124,7 @@ function openEdit(movement) {
     fecha: movement.fecha,
     tipo: movement.tipo,
     categoria_id: movement.categoria_id ?? '',
+    subscription_id: movement.subscription_id ?? '',
     descripcion: movement.descripcion ?? '',
     monto: movement.monto,
   }
@@ -142,6 +145,7 @@ async function saveMovement() {
     fecha: form.value.fecha,
     tipo: form.value.tipo,
     categoria_id: form.value.categoria_id === '' ? null : Number(form.value.categoria_id),
+    subscription_id: form.value.subscription_id === '' ? null : Number(form.value.subscription_id),
     descripcion: form.value.descripcion,
     monto: Number(form.value.monto),
   }
@@ -347,8 +351,8 @@ onMounted(loadData)
 
         <form class="grid gap-4 p-5" @submit.prevent="saveMovement">
           <div class="grid grid-cols-2 gap-2 rounded-lg bg-zinc-100 p-1 dark:bg-zinc-950">
-            <button type="button" class="h-9 rounded-md text-sm font-medium" :class="form.tipo === 'gasto' ? 'bg-white text-rose-700 shadow-sm dark:bg-zinc-800 dark:text-rose-400' : 'text-zinc-500'" @click="form.tipo = 'gasto'; form.categoria_id = ''">Gasto</button>
-            <button type="button" class="h-9 rounded-md text-sm font-medium" :class="form.tipo === 'ingreso' ? 'bg-white text-emerald-700 shadow-sm dark:bg-zinc-800 dark:text-emerald-400' : 'text-zinc-500'" @click="form.tipo = 'ingreso'; form.categoria_id = ''">Ingreso</button>
+            <button type="button" class="h-9 rounded-md text-sm font-medium" :class="form.tipo === 'gasto' ? 'bg-white text-rose-700 shadow-sm dark:bg-zinc-800 dark:text-rose-400' : 'text-zinc-500'" @click="form.tipo = 'gasto'; form.categoria_id = ''; form.subscription_id = ''">Gasto</button>
+            <button type="button" class="h-9 rounded-md text-sm font-medium" :class="form.tipo === 'ingreso' ? 'bg-white text-emerald-700 shadow-sm dark:bg-zinc-800 dark:text-emerald-400' : 'text-zinc-500'" @click="form.tipo = 'ingreso'; form.categoria_id = ''; form.subscription_id = ''">Ingreso</button>
           </div>
 
           <div class="grid gap-4 sm:grid-cols-2">
@@ -368,6 +372,19 @@ onMounted(loadData)
               <option value="">Sin categoría</option>
               <option v-for="category in formCategories" :key="category.id" :value="category.id">{{ category.icono }} {{ category.nombre }}</option>
             </select>
+          </label>
+
+          <label class="grid gap-1 text-sm">
+            <span class="font-medium text-zinc-700 dark:text-zinc-300">Fijo asociado</span>
+            <select v-model="form.subscription_id" class="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
+              <option value="">Ninguno</option>
+              <option v-for="subscription in formSubscriptions" :key="subscription.id" :value="subscription.id">
+                {{ subscription.categoria_icono ?? '' }} {{ subscription.nombre }}{{ appliedSubscriptionIds.has(Number(subscription.id)) ? ' (ya aplicado este mes)' : '' }}
+              </option>
+            </select>
+            <span class="text-xs text-zinc-500 dark:text-zinc-400">
+              Vincula este movimiento a un ingreso/gasto fijo (ej. salario, arriendo) para que "Aplicar fijos" no lo duplique este mes.
+            </span>
           </label>
 
           <label class="grid gap-1 text-sm">
