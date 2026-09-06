@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import VChart from '../charts/setup.js'
 import StatCard from '../components/StatCard.vue'
 import CapitalMovementModal from '../components/CapitalMovementModal.vue'
@@ -210,13 +210,33 @@ const tooltipBase = computed(() => ({
 
 const compactCOP = (value) => `$ ${(value / 1_000_000).toLocaleString('es-CO', { maximumFractionDigits: 1 })} M`
 
+// Nombre de la plataforma cuya banda apilada está bajo el cursor, para que el
+// tooltip la muestre primero. Se calcula a mano (convertFromPixel) porque el
+// formatter del tooltip de ECharts no expone "cuál está más cerca" — siempre
+// llega en el orden fijo de las series (ver watch de areaChartRef más abajo).
+const areaChartRef = ref(null)
+const hoveredPlatformName = ref(null)
+
 // Área apilada: evolución del patrimonio por plataforma
 const areaOption = computed(() => ({
   tooltip: {
     ...tooltipBase.value,
     trigger: 'axis',
     axisPointer: { type: 'cross', label: { show: false }, crossStyle: { color: ink.value.muted } },
-    valueFormatter: (v) => (v === null || v === undefined ? 'pendiente' : formatCOP(v)),
+    formatter: (params) => {
+      const sorted = [...params].sort((a, b) => {
+        if (a.seriesName === hoveredPlatformName.value) return -1
+        if (b.seriesName === hoveredPlatformName.value) return 1
+        return 0
+      })
+      const header = `<div style="margin-bottom:4px;font-weight:600;">${params[0]?.axisValueLabel ?? ''}</div>`
+      const rows = sorted.map((p) => {
+        const valueText = p.value === null || p.value === undefined ? 'pendiente' : formatCOP(p.value)
+        const isHovered = p.seriesName === hoveredPlatformName.value
+        return `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;${isHovered ? 'font-weight:700;' : ''}"><span>${p.marker}${p.seriesName}</span><span>${valueText}</span></div>`
+      }).join('')
+      return header + rows
+    },
   },
   legend: { top: 0, textStyle: { color: ink.value.text, fontSize: 12 }, itemWidth: 14, itemHeight: 8 },
   grid: { left: 56, right: 16, top: 36, bottom: 28 },
@@ -315,6 +335,42 @@ function sparkOption(platformId, trendValue) {
     }],
   }
 }
+
+// Detecta sobre qué banda apilada (plataforma) está el cursor en el
+// gráfico de evolución del patrimonio, convirtiendo el pixel a valor de
+// datos y comparando contra la suma acumulada de cada serie en ese mes.
+watch(() => areaChartRef.value?.chart, (chart) => {
+  if (!chart) return
+  const zr = chart.getZr()
+
+  function updateHoveredPlatform(pointInPixel) {
+    if (!chart.containPixel('grid', pointInPixel)) {
+      hoveredPlatformName.value = null
+      return
+    }
+    const [monthIndexRaw, yValue] = chart.convertFromPixel({ xAxisIndex: 0, yAxisIndex: 0 }, pointInPixel)
+    const monthIndex = Math.round(monthIndexRaw)
+    const month = serie.value[monthIndex]
+    if (!month) {
+      hoveredPlatformName.value = null
+      return
+    }
+    let cumulative = 0
+    let found = null
+    for (const platform of platformList.value) {
+      const value = month.plataformas.find((x) => x.platform_id === platform.platform_id)?.saldo_final ?? 0
+      if (yValue >= cumulative && yValue <= cumulative + value) {
+        found = platform.nombre
+        break
+      }
+      cumulative += value
+    }
+    hoveredPlatformName.value = found
+  }
+
+  zr.on('mousemove', (e) => updateHoveredPlatform([e.offsetX, e.offsetY]))
+  zr.on('globalout', () => { hoveredPlatformName.value = null })
+})
 
 onMounted(() => loadSummary({ allowJump: true }))
 </script>
@@ -425,7 +481,7 @@ onMounted(() => loadSummary({ allowJump: true }))
       <section class="mt-6 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
         <h2 class="text-sm font-semibold">Evolución del patrimonio · {{ selectedYear }}</h2>
         <p class="text-xs text-zinc-500 dark:text-zinc-400">Saldo final por plataforma, apilado</p>
-        <VChart class="mt-3 w-full" style="height: 320px" :option="areaOption" autoresize />
+        <VChart ref="areaChartRef" class="mt-3 w-full" style="height: 320px" :option="areaOption" autoresize />
       </section>
 
       <div class="mt-6 grid gap-6 xl:grid-cols-[3fr_2fr]">
