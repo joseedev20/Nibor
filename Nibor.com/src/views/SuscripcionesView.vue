@@ -9,6 +9,7 @@ const selectedMonth = ref(now.getMonth() + 1)
 const subscriptions = ref([])
 const categories = ref([])
 const cards = ref([])
+const monthMovements = ref([])
 const historyOpen = ref(false)
 const historyLoading = ref(false)
 const historyYear = ref(now.getFullYear())
@@ -37,6 +38,9 @@ const activeGastosCount = computed(() => activeSubs.value.filter((s) => s.tipo !
 const fixedBalance = computed(() => activeIngresos.value - activeGastos.value)
 const fixedBalanceStatus = computed(() => fixedBalance.value >= 0 ? 'Disponible después de fijos' : 'Faltante para cubrir fijos')
 const incomeSubscriptions = computed(() => subscriptions.value.filter((subscription) => subscription.tipo === 'ingreso'))
+const paidSubscriptionIds = computed(() => new Set(monthMovements.value
+  .filter((movement) => movement.subscription_id !== null && movement.subscription_id !== undefined)
+  .map((movement) => Number(movement.subscription_id))))
 const filteredHistorySubs = computed(() => {
   const rows = history.value?.subs ?? []
   if (historyFilter.value === 'ingresos') return rows.filter((subscription) => subscription.tipo === 'ingreso')
@@ -135,15 +139,29 @@ async function loadData() {
   }
 }
 
+// Movimientos del mes en "Aplicar a", solo para saber qué fijos ya tienen
+// un movimiento vinculado (subscription_id) y así no depender únicamente
+// del botón "Aplicar" — un movimiento capturado por mensaje y vinculado a
+// mano en Gastos también cuenta como pagado.
+async function loadMonthMovements() {
+  try {
+    monthMovements.value = await fetchJson(`/api/movements?anio=${selectedYear.value}&mes=${selectedMonth.value}`)
+  } catch (err) {
+    error.value = err.message
+  }
+}
+
 function shiftMonth(delta) {
   const date = new Date(selectedYear.value, selectedMonth.value - 1 + delta, 1)
   selectedYear.value = date.getFullYear()
   selectedMonth.value = date.getMonth() + 1
+  loadMonthMovements()
 }
 
 function setCurrentMonth() {
   selectedYear.value = now.getFullYear()
   selectedMonth.value = now.getMonth() + 1
+  loadMonthMovements()
 }
 
 function openNew(tipo = 'gasto') {
@@ -341,6 +359,7 @@ async function applySubscriptions() {
       body: JSON.stringify({}),
     })
     notice.value = `Aplicadas: ${data.created.length}. Ya existían: ${data.skipped.length}.`
+    await loadMonthMovements()
   } catch (err) {
     error.value = err.message
   } finally {
@@ -348,7 +367,10 @@ async function applySubscriptions() {
   }
 }
 
-onMounted(loadData)
+onMounted(() => {
+  loadData()
+  loadMonthMovements()
+})
 </script>
 
 <template>
@@ -443,6 +465,16 @@ onMounted(loadData)
               <span class="truncate">{{ subscription.nombre }}</span>
               <span class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium" :class="subscription.tipo === 'ingreso' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400' : 'bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-400'">{{ subscription.tipo === 'ingreso' ? 'ingreso' : 'gasto' }}</span>
               <span v-if="Number(subscription.automatica ?? 1) === 0" class="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-400" title="No se debita sola: te la recordamos cada mes hasta que la registres">pago manual</span>
+              <span
+                v-if="Number(subscription.activa) === 1"
+                class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium"
+                :class="paidSubscriptionIds.has(Number(subscription.id))
+                  ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
+                  : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400'"
+                :title="`En ${monthLabel}`"
+              >
+                {{ paidSubscriptionIds.has(Number(subscription.id)) ? '✓ Pagado' : 'Pendiente' }}
+              </span>
             </span>
             <span class="block truncate text-xs text-zinc-500 dark:text-zinc-400">
               Día {{ subscription.dia_cobro }} · {{ subscription.categoria_icono ?? '' }} {{ subscription.categoria_nombre ?? 'Sin categoría' }}
