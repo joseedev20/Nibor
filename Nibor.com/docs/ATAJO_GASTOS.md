@@ -81,6 +81,13 @@ con:
 - Reconoce dos formatos de monto, según el tipo de mensaje: `$20,000.00`
   (coma miles, punto decimal — transferencias, QR, retiros) y `COP654.139,00`
   (punto miles, coma decimal — compras con tarjeta de crédito/débito).
+- **Compra rechazada:** Bancolombia manda un mensaje distinto cuando una
+  compra no se completa ("tu compra en X no fue exitosa, el cupo... no se
+  afectó"). Ese mensaje **no** crea un gasto — se detecta antes de intentar
+  nada (`DECLINED_PURCHASE_PATTERN` en `widgetExpenses.js`) y responde
+  `success: true` con `movimiento: null` y un texto claro de que no se
+  registró nada. Es intencional que sea "success" y no un error: el backend
+  hizo exactamente lo correcto (no registrar una compra que nunca se cobró).
 - Si no se manda `descripcion`, se usa el **mensaje completo**, recortando
   solo el relleno final ("¿Dudas? Llamanos...", "Con Bre-b es de una y
   gratis...") — se conserva todo hasta la hora de la transacción. Así no

@@ -84,6 +84,14 @@ async function resolveExpenseCategory(db, body) {
   return { category: matches[0] }
 }
 
+// Bancolombia manda un mensaje DISTINTO cuando una compra es rechazada
+// ("tu compra... no fue exitosa, el cupo... no se afectó") — sin ninguno de
+// los OUTGOING_MONEY_VERBS de abajo, así que ya no matchea el patrón de
+// monto por sí solo. Se detecta aparte para responder claro en vez de un
+// 400 genérico, y sobre todo para que quede explícito que NUNCA se crea un
+// movimiento para una compra rechazada, sin importar qué diga el mensaje.
+const DECLINED_PURCHASE_PATTERN = /no fue exitosa|no se afect[oó]|transacci[oó]n rechazada|compra rechazada/i
+
 // Notificaciones de Bancolombia de dinero que SALE de la cuenta. El monto
 // aparece como "<verbo> $<monto>" ("transferiste", "pagaste" por QR, etc.).
 // Agregar un verbo nuevo aquí es agregar una palabra a esta lista — nunca
@@ -291,6 +299,22 @@ widgetExpenses.post('/', (c) => guarded(c, '/api/widget/expenses', async () => {
 
   const body = await readJson(c)
   if (!body) return errorResult(400, 'Body JSON inválido', 'BAD_REQUEST')
+
+  const mensaje = String(body.mensaje ?? '')
+  if (mensaje && DECLINED_PURCHASE_PATTERN.test(mensaje)) {
+    return {
+      status: 200,
+      payload: {
+        success: true,
+        data: {
+          text: '🚫 Compra rechazada: no se registró ningún gasto (el cupo no se afectó).',
+          duplicado: false,
+          movimiento: null,
+        },
+      },
+      extraLog: { auth: 'ok', declinedPurchase: true },
+    }
+  }
 
   const normalized = await normalizeExpense(body, c)
   if (normalized.error) return errorResult(normalized.status, normalized.error, normalized.code)

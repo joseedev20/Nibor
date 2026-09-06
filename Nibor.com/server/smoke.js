@@ -1375,6 +1375,14 @@ async function run() {
     throw new Error(`Widget de gastos no detecto monto/descripcion de mensaje de compra COP: ${JSON.stringify(widgetExpenseFromPurchaseMessage)}`)
   }
 
+  const widgetExpenseDeclined = await post('/widget/expenses?token=smoke-expenses-token', {
+    mensaje: 'Bancolombia: tu compra en Farfetch              Lo por COP654.139,00 no fue exitosa, el cupo de tu T.Credito *2762 no se afecto. 22:02.05/09/2026.¿Dudas? 018000912345',
+    categoria_id: expenseCategory.id,
+  })
+  if (widgetExpenseDeclined.movimiento !== null || !String(widgetExpenseDeclined.text ?? '').includes('rechazada')) {
+    throw new Error(`Widget de gastos no manejo bien una compra rechazada: ${JSON.stringify(widgetExpenseDeclined)}`)
+  }
+
   const autoIdMensaje = `Bancolombia: Transferiste $32,000.00 desde tu cuenta 5702 a la cuenta *9988776655 el 12/08/2026 a las 20:${notificationSmokeRunId.toString().padStart(2, '0').slice(-2)}. ¿Dudas? Llamanos al 018000931987. Estamos cerca.`
   const widgetExpenseAutoId = await post('/widget/expenses?token=smoke-expenses-token', {
     mensaje: autoIdMensaje,
