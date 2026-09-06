@@ -1363,6 +1363,18 @@ async function run() {
     throw new Error(`Widget de gastos no detecto monto/descripcion de mensaje de pago QR: ${JSON.stringify(widgetExpenseFromQrMessage)}`)
   }
 
+  const widgetExpenseFromPurchaseMessage = await post('/widget/expenses?token=smoke-expenses-token', {
+    mensaje: 'Bancolombia: Compraste COP654.139,00 en Farfetch.com con tu T.Cred *9317, el 05/09/2026 a las 22:07. Si tienes dudas, encuentranos aqui: 6045109095 o 018000931987. Estamos cerca.',
+    categoria_id: expenseCategory.id,
+    request_id: `${widgetExpenseRequestId}-mensaje-compra`,
+  })
+  if (
+    widgetExpenseFromPurchaseMessage.movimiento?.monto !== 654139
+    || widgetExpenseFromPurchaseMessage.movimiento?.descripcion !== 'Bancolombia: Compraste COP654.139,00 en Farfetch.com con tu T.Cred *9317, el 05/09/2026 a las 22:07.'
+  ) {
+    throw new Error(`Widget de gastos no detecto monto/descripcion de mensaje de compra COP: ${JSON.stringify(widgetExpenseFromPurchaseMessage)}`)
+  }
+
   const autoIdMensaje = `Bancolombia: Transferiste $32,000.00 desde tu cuenta 5702 a la cuenta *9988776655 el 12/08/2026 a las 20:${notificationSmokeRunId.toString().padStart(2, '0').slice(-2)}. ¿Dudas? Llamanos al 018000931987. Estamos cerca.`
   const widgetExpenseAutoId = await post('/widget/expenses?token=smoke-expenses-token', {
     mensaje: autoIdMensaje,

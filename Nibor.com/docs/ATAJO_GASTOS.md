@@ -71,13 +71,16 @@ con:
 }
 ```
 
-- El backend detecta el monto buscando `<verbo> $<monto>` dentro de
+- El backend detecta el monto buscando `<verbo> <monto>` dentro de
   `mensaje`, con estos verbos reconocidos: `transferiste`, `pagaste`,
   `retiraste`, `compraste` (lista en `OUTGOING_MONEY_VERBS` en
   `server/routes/widgetExpenses.js`, fácil de ampliar). Si no encuentra
   ninguno, responde `400 BAD_REQUEST`. A propósito **no** incluye verbos de
   dinero entrante (`recibiste`, `consignaron`...) porque este endpoint solo
   crea gastos.
+- Reconoce dos formatos de monto, según el tipo de mensaje: `$20,000.00`
+  (coma miles, punto decimal — transferencias, QR, retiros) y `COP654.139,00`
+  (punto miles, coma decimal — compras con tarjeta de crédito/débito).
 - Si no se manda `descripcion`, se usa el **mensaje completo**, recortando
   solo el relleno final ("¿Dudas? Llamanos...", "Con Bre-b es de una y
   gratis...") — se conserva todo hasta la hora de la transacción. Así no

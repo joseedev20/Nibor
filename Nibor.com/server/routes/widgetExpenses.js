@@ -94,8 +94,11 @@ async function resolveExpenseCategory(db, body) {
 // información útil; solo se recorta el relleno de "¿Dudas? Llamanos..." al
 // final, quedándose con todo hasta la hora.
 const OUTGOING_MONEY_VERBS = ['transferiste', 'pagaste', 'retiraste', 'compraste']
+// Dos formatos de monto en los mensajes de Bancolombia: transferencias/QR
+// usan "$20,000.00" (coma miles, punto decimal); compras con tarjeta usan
+// "COP654.139,00" (punto miles, coma decimal — formato colombiano estándar).
 const TRANSFER_AMOUNT_PATTERN = new RegExp(
-  `\\b(?:${OUTGOING_MONEY_VERBS.join('|')})\\b[^$]*\\$\\s*([\\d]{1,3}(?:,\\d{3})*(?:\\.\\d{1,2})?)`,
+  `\\b(?:${OUTGOING_MONEY_VERBS.join('|')})\\b.*?(?:\\$\\s*([\\d]{1,3}(?:,\\d{3})*(?:\\.\\d{1,2})?)|COP\\s*([\\d]{1,3}(?:\\.\\d{3})*(?:,\\d{1,2})?))`,
   'i',
 )
 const TRANSFER_TIMESTAMP_CUTOFF = /^(.*?a las\s+\d{1,2}:\d{2}\.?)/is
@@ -103,8 +106,15 @@ const TRANSFER_TIMESTAMP_CUTOFF = /^(.*?a las\s+\d{1,2}:\d{2}\.?)/is
 function extractMontoFromMensaje(mensaje) {
   const match = mensaje.match(TRANSFER_AMOUNT_PATTERN)
   if (!match) return null
-  const value = Number(match[1].replace(/,/g, ''))
-  return Number.isFinite(value) ? value : null
+  if (match[1] !== undefined) {
+    const value = Number(match[1].replace(/,/g, ''))
+    return Number.isFinite(value) ? value : null
+  }
+  if (match[2] !== undefined) {
+    const value = Number(match[2].replace(/\./g, '').replace(',', '.'))
+    return Number.isFinite(value) ? value : null
+  }
+  return null
 }
 
 function descripcionFromMensaje(mensaje) {
@@ -161,7 +171,7 @@ async function normalizeExpense(body, c) {
   if (!Number.isFinite(monto) || monto <= 0) {
     return {
       error: mensaje
-        ? `No se pudo detectar el monto en el mensaje (se esperaba "${OUTGOING_MONEY_VERBS[0]} $monto" o similar: ${OUTGOING_MONEY_VERBS.join(', ')}). Mensaje recibido: ${describeReceived(mensaje, 300)}`
+        ? `No se pudo detectar el monto en el mensaje (se esperaba un verbo de dinero saliente — ${OUTGOING_MONEY_VERBS.join(', ')} — seguido de "$monto" o "COP<monto>"). Mensaje recibido: ${describeReceived(mensaje, 300)}`
         : `El monto debe ser mayor a 0. Valor de "monto" recibido: ${describeReceived(body.monto)}`,
       status: 400,
       code: 'BAD_REQUEST',
