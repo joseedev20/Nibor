@@ -45,7 +45,7 @@ async function listExpenseCategories(db) {
   )
 }
 
-async function resolveExpenseCategory(db, body) {
+async function resolveExpenseCategory(db, body, tipo = 'gasto') {
   if (body.categoria_id !== undefined && body.categoria_id !== null && body.categoria_id !== '') {
     const id = toInteger(body.categoria_id)
     if (!Number.isInteger(id)) return { error: 'La categoría debe ser válida', status: 400, code: 'BAD_REQUEST' }
@@ -54,12 +54,13 @@ async function resolveExpenseCategory(db, body) {
       db,
       `SELECT id, nombre, icono, color
        FROM categories
-       WHERE id = ? AND tipo = 'gasto'`,
+       WHERE id = ? AND tipo = ?`,
       id,
+      tipo,
     )
     return category
       ? { category }
-      : { error: 'Categoría de gasto no encontrada', status: 404, code: 'CATEGORY_NOT_FOUND' }
+      : { error: `Categoría de ${tipo} no encontrada`, status: 404, code: 'CATEGORY_NOT_FOUND' }
   }
 
   const name = String(body.categoria ?? '').trim()
@@ -69,14 +70,49 @@ async function resolveExpenseCategory(db, body) {
     db,
     `SELECT id, nombre, icono, color
      FROM categories
-     WHERE tipo = 'gasto' AND LOWER(nombre) = LOWER(?)
+     WHERE tipo = ? AND LOWER(nombre) = LOWER(?)
      ORDER BY id ASC`,
+    tipo,
     name,
   )
-  if (!matches.length) return { error: `Categoría de gasto no encontrada: ${name}`, status: 404, code: 'CATEGORY_NOT_FOUND' }
+  if (!matches.length) return { error: `Categoría de ${tipo} no encontrada: ${name}`, status: 404, code: 'CATEGORY_NOT_FOUND' }
   if (matches.length > 1) {
     return {
       error: `Hay varias categorías llamadas ${name}; usa categoria_id`,
+      status: 409,
+      code: 'AMBIGUOUS_CATEGORY',
+    }
+  }
+  return { category: matches[0] }
+}
+
+// Categoría fija para ingresos detectados por mensaje ("recibiste un pago").
+// Se ignora a propósito cualquier `categoria`/`categoria_id` que mande el
+// body: el Atajo del usuario manda un valor fijo pensado para gastos (ej.
+// "Transferencias"), que no existe como categoría de ingreso — usar ese
+// valor causaría un 404 en vez de registrar el ingreso. Así no hace falta
+// tocar el Atajo para que los ingresos también se registren solos.
+const DEFAULT_INCOME_CATEGORY_NAME = 'Otros ingresos'
+
+async function resolveDefaultIncomeCategory(db) {
+  const matches = await all(
+    db,
+    `SELECT id, nombre, icono, color
+     FROM categories
+     WHERE tipo = 'ingreso' AND LOWER(nombre) = LOWER(?)
+     ORDER BY id ASC`,
+    DEFAULT_INCOME_CATEGORY_NAME,
+  )
+  if (!matches.length) {
+    return {
+      error: `Categoría de ingreso por defecto no encontrada: "${DEFAULT_INCOME_CATEGORY_NAME}". Créala en Configuración.`,
+      status: 404,
+      code: 'CATEGORY_NOT_FOUND',
+    }
+  }
+  if (matches.length > 1) {
+    return {
+      error: `Hay varias categorías llamadas "${DEFAULT_INCOME_CATEGORY_NAME}"; deja solo una en Configuración`,
       status: 409,
       code: 'AMBIGUOUS_CATEGORY',
     }
@@ -92,27 +128,28 @@ async function resolveExpenseCategory(db, body) {
 // movimiento para una compra rechazada, sin importar qué diga el mensaje.
 const DECLINED_PURCHASE_PATTERN = /no fue exitosa|no se afect[oó]|transacci[oó]n rechazada|compra rechazada/i
 
-// Notificaciones de Bancolombia de dinero que SALE de la cuenta. El monto
-// aparece como "<verbo> $<monto>" ("transferiste", "pagaste" por QR, etc.).
-// Agregar un verbo nuevo aquí es agregar una palabra a esta lista — nunca
-// agregar verbos de dinero ENTRANTE (recibiste, consignaron...), porque este
-// endpoint solo crea gastos. Para la descripción se usa el mensaje completo
-// (no solo el destinatario) porque el formato varía entre plantillas (cuenta
-// directa, llave Bre-B con nombre, QR) y el texto completo nunca deja afuera
-// información útil; solo se recorta el relleno de "¿Dudas? Llamanos..." al
-// final, quedándose con todo hasta la hora.
+// Notificaciones de Bancolombia de dinero que SALE de la cuenta ("gasto") o
+// que ENTRA ("ingreso"). El monto aparece como "<verbo> $<monto>" o
+// "<verbo> COP<monto>". Agregar un verbo nuevo es agregar una palabra a la
+// lista correspondiente; nunca mezclar un verbo entrante en la lista de
+// salientes ni viceversa, porque de eso depende si se crea un gasto o un
+// ingreso. Para la descripción se usa el mensaje completo (no solo el
+// destinatario) porque el formato varía entre plantillas (cuenta directa,
+// llave Bre-B con nombre, QR, pago recibido) y el texto completo nunca deja
+// afuera información útil; solo se recorta el relleno de "¿Dudas?
+// Llamanos..." al final, quedándose con todo hasta la hora.
 const OUTGOING_MONEY_VERBS = ['transferiste', 'pagaste', 'retiraste', 'compraste']
-// Dos formatos de monto en los mensajes de Bancolombia: transferencias/QR
-// usan "$20,000.00" (coma miles, punto decimal); compras con tarjeta usan
-// "COP654.139,00" (punto miles, coma decimal — formato colombiano estándar).
-const TRANSFER_AMOUNT_PATTERN = new RegExp(
-  `\\b(?:${OUTGOING_MONEY_VERBS.join('|')})\\b.*?(?:\\$\\s*([\\d]{1,3}(?:,\\d{3})*(?:\\.\\d{1,2})?)|COP\\s*([\\d]{1,3}(?:\\.\\d{3})*(?:,\\d{1,2})?))`,
-  'i',
-)
+const INCOMING_MONEY_VERBS = ['recibiste']
+// Dos formatos de monto en los mensajes de Bancolombia: transferencias/QR/
+// pagos recibidos usan "$20,000.00" (coma miles, punto decimal); compras con
+// tarjeta usan "COP654.139,00" (punto miles, coma decimal — formato
+// colombiano estándar).
+const AMOUNT_TOKEN = '(?:\\$\\s*([\\d]{1,3}(?:,\\d{3})*(?:\\.\\d{1,2})?)|COP\\s*([\\d]{1,3}(?:\\.\\d{3})*(?:,\\d{1,2})?))'
+const OUTGOING_AMOUNT_PATTERN = new RegExp(`\\b(?:${OUTGOING_MONEY_VERBS.join('|')})\\b.*?${AMOUNT_TOKEN}`, 'i')
+const INCOMING_AMOUNT_PATTERN = new RegExp(`\\b(?:${INCOMING_MONEY_VERBS.join('|')})\\b.*?${AMOUNT_TOKEN}`, 'i')
 const TRANSFER_TIMESTAMP_CUTOFF = /^(.*?a las\s+\d{1,2}:\d{2}\.?)/is
 
-function extractMontoFromMensaje(mensaje) {
-  const match = mensaje.match(TRANSFER_AMOUNT_PATTERN)
+function parseAmountMatch(match) {
   if (!match) return null
   if (match[1] !== undefined) {
     const value = Number(match[1].replace(/,/g, ''))
@@ -122,6 +159,16 @@ function extractMontoFromMensaje(mensaje) {
     const value = Number(match[2].replace(/\./g, '').replace(',', '.'))
     return Number.isFinite(value) ? value : null
   }
+  return null
+}
+
+// Detecta si el mensaje describe dinero saliente o entrante y extrae el
+// monto en el mismo paso; null si no coincide con ningún verbo conocido.
+function detectMovementFromMensaje(mensaje) {
+  const outgoing = mensaje.match(OUTGOING_AMOUNT_PATTERN)
+  if (outgoing) return { tipo: 'gasto', monto: parseAmountMatch(outgoing) }
+  const incoming = mensaje.match(INCOMING_AMOUNT_PATTERN)
+  if (incoming) return { tipo: 'ingreso', monto: parseAmountMatch(incoming) }
   return null
 }
 
@@ -154,10 +201,18 @@ async function hashMensaje(mensaje) {
 async function normalizeExpense(body, c) {
   const mensaje = String(body.mensaje ?? '').trim()
 
+  let tipo = body.tipo === 'ingreso' ? 'ingreso' : 'gasto'
+  let monto = null
   const montoFromBody = toNumber(body.monto)
-  const monto = Number.isFinite(montoFromBody) && montoFromBody > 0
-    ? montoFromBody
-    : (mensaje ? extractMontoFromMensaje(mensaje) : null)
+  if (Number.isFinite(montoFromBody) && montoFromBody > 0) {
+    monto = montoFromBody
+  } else if (mensaje) {
+    const detected = detectMovementFromMensaje(mensaje)
+    if (detected) {
+      tipo = detected.tipo
+      monto = detected.monto
+    }
+  }
 
   let descripcion = String(body.descripcion ?? '').trim()
   if (!descripcion && mensaje) {
@@ -179,7 +234,7 @@ async function normalizeExpense(body, c) {
   if (!Number.isFinite(monto) || monto <= 0) {
     return {
       error: mensaje
-        ? `No se pudo detectar el monto en el mensaje (se esperaba un verbo de dinero saliente — ${OUTGOING_MONEY_VERBS.join(', ')} — seguido de "$monto" o "COP<monto>"). Mensaje recibido: ${describeReceived(mensaje, 300)}`
+        ? `No se pudo detectar el monto en el mensaje (se esperaba un verbo de dinero saliente — ${OUTGOING_MONEY_VERBS.join(', ')} — o entrante — ${INCOMING_MONEY_VERBS.join(', ')} — seguido de "$monto" o "COP<monto>"). Mensaje recibido: ${describeReceived(mensaje, 300)}`
         : `El monto debe ser mayor a 0. Valor de "monto" recibido: ${describeReceived(body.monto)}`,
       status: 400,
       code: 'BAD_REQUEST',
@@ -214,14 +269,14 @@ async function normalizeExpense(body, c) {
     }
   }
 
-  return { expense: { monto, descripcion, fecha, request_id } }
+  return { expense: { tipo, monto, descripcion, fecha, request_id } }
 }
 
 async function getExpenseByRequestId(db, requestId) {
   return first(
     db,
     `SELECT
-       m.id, m.fecha, m.categoria_id, m.descripcion, m.monto,
+       m.id, m.fecha, m.tipo, m.categoria_id, m.descripcion, m.monto,
        m.external_id AS request_id,
        c.nombre AS categoria, c.icono AS categoria_icono
      FROM movements m
@@ -236,7 +291,7 @@ async function getExpenseById(db, id) {
   return first(
     db,
     `SELECT
-       m.id, m.fecha, m.categoria_id, m.descripcion, m.monto,
+       m.id, m.fecha, m.tipo, m.categoria_id, m.descripcion, m.monto,
        m.external_id AS request_id,
        c.nombre AS categoria, c.icono AS categoria_icono
      FROM movements m
@@ -247,7 +302,8 @@ async function getExpenseById(db, id) {
 }
 
 function matchesExisting(existing, expense, categoryId) {
-  return existing.fecha === expense.fecha
+  return existing.tipo === expense.tipo
+    && existing.fecha === expense.fecha
     && existing.categoria_id === categoryId
     && existing.descripcion === expense.descripcion
     && Math.abs(Number(existing.monto) - expense.monto) < 0.000001
@@ -256,12 +312,13 @@ function matchesExisting(existing, expense, categoryId) {
 function successResult(movement, duplicate, dbMs) {
   const icon = movement.categoria_icono ? `${movement.categoria_icono} ` : ''
   const duplicateText = duplicate ? ' (ya estaba registrado)' : ''
+  const label = movement.tipo === 'ingreso' ? 'Ingreso' : 'Gasto'
   return {
     status: duplicate ? 200 : 201,
     payload: {
       success: true,
       data: {
-        text: `✅ Gasto registrado${duplicateText}: ${copFormatter.format(Number(movement.monto))} · ${movement.descripcion} · ${icon}${movement.categoria}`,
+        text: `✅ ${label} registrado${duplicateText}: ${copFormatter.format(Number(movement.monto))} · ${movement.descripcion} · ${icon}${movement.categoria}`,
         duplicado: duplicate,
         movimiento: movement,
       },
@@ -292,8 +349,11 @@ widgetExpenses.get('/', (c) => guarded(c, '/api/widget/expenses', async () => {
   }
 }))
 
-// POST registra un gasto. request_id es obligatorio para que un reintento del
-// Atajo responda con el movimiento existente sin insertar un duplicado.
+// POST registra un gasto o un ingreso (según el mensaje detectado, o
+// tipo:'ingreso' explícito). request_id es opcional cuando se manda mensaje
+// (se deriva por hash); si se manda, es obligatorio que sea único para que
+// un reintento del Atajo responda con el movimiento existente sin insertar
+// un duplicado.
 widgetExpenses.post('/', (c) => guarded(c, '/api/widget/expenses', async () => {
   if (!isValidExpenseToken(c)) return tokenFailure()
 
@@ -320,7 +380,16 @@ widgetExpenses.post('/', (c) => guarded(c, '/api/widget/expenses', async () => {
   if (normalized.error) return errorResult(normalized.status, normalized.error, normalized.code)
 
   const dbStart = Date.now()
-  const categoryResult = await withDbTimeout(resolveExpenseCategory(c.env.DB, body), 'buscarCategoriaGasto')
+  // Un ingreso detectado por mensaje ("recibiste...") usa siempre la
+  // categoría por defecto, ignorando `categoria`/`categoria_id` del body
+  // (ver comentario en resolveDefaultIncomeCategory). El flujo manual
+  // (sin mensaje, con tipo:'ingreso' explícito) sí respeta esos campos.
+  const categoryResult = normalized.expense.tipo === 'ingreso' && mensaje
+    ? await withDbTimeout(resolveDefaultIncomeCategory(c.env.DB), 'buscarCategoriaIngresoDefecto')
+    : await withDbTimeout(
+      resolveExpenseCategory(c.env.DB, body, normalized.expense.tipo),
+      'buscarCategoriaAtajo',
+    )
   if (categoryResult.error) {
     return errorResult(categoryResult.status, categoryResult.error, categoryResult.code, {
       auth: 'ok',
@@ -355,8 +424,9 @@ widgetExpenses.post('/', (c) => guarded(c, '/api/widget/expenses', async () => {
            fecha, tipo, categoria_id, descripcion, monto, subscription_id,
            external_source, external_id
          )
-         VALUES (?, 'gasto', ?, ?, ?, NULL, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, NULL, ?, ?)`,
         expense.fecha,
+        expense.tipo,
         category.id,
         expense.descripcion,
         expense.monto,

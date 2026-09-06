@@ -72,12 +72,20 @@ con:
 ```
 
 - El backend detecta el monto buscando `<verbo> <monto>` dentro de
-  `mensaje`, con estos verbos reconocidos: `transferiste`, `pagaste`,
-  `retiraste`, `compraste` (lista en `OUTGOING_MONEY_VERBS` en
-  `server/routes/widgetExpenses.js`, fácil de ampliar). Si no encuentra
-  ninguno, responde `400 BAD_REQUEST`. A propósito **no** incluye verbos de
-  dinero entrante (`recibiste`, `consignaron`...) porque este endpoint solo
-  crea gastos.
+  `mensaje`. Verbos de dinero **saliente** → crea un **gasto**:
+  `transferiste`, `pagaste`, `retiraste`, `compraste`
+  (`OUTGOING_MONEY_VERBS`). Verbos de dinero **entrante** → crea un
+  **ingreso**: `recibiste` (`INCOMING_MONEY_VERBS`). Ambas listas están en
+  `server/routes/widgetExpenses.js`, fáciles de ampliar — nunca mezclar un
+  verbo entrante en la lista de salientes ni viceversa. Si no encuentra
+  ninguno, responde `400 BAD_REQUEST`.
+- **Ingresos por mensaje ignoran `categoria`/`categoria_id` del body** y
+  usan siempre la categoría fija `"Otros ingresos"` (`DEFAULT_INCOME_
+  CATEGORY_NAME`). Es a propósito: el mismo Atajo que manda una `categoria`
+  fija pensada para gastos (ej. `"Transferencias"`) también dispara para
+  mensajes de "Recibiste un pago...", y esa categoría no existe como
+  ingreso — usarla daría 404 en vez de registrar el ingreso. Así no hace
+  falta tocar el Atajo para que los ingresos también se registren solos.
 - Reconoce dos formatos de monto, según el tipo de mensaje: `$20,000.00`
   (coma miles, punto decimal — transferencias, QR, retiros) y `COP654.139,00`
   (punto miles, coma decimal — compras con tarjeta de crédito/débito).

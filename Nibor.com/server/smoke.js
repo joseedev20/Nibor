@@ -1383,6 +1383,23 @@ async function run() {
     throw new Error(`Widget de gastos no manejo bien una compra rechazada: ${JSON.stringify(widgetExpenseDeclined)}`)
   }
 
+  const widgetIncomeFromMessage = await post('/widget/expenses?token=smoke-expenses-token', {
+    mensaje: 'Bancolombia: Recibiste un pago PROVEEDOR de RENTIO SAS por $1,071,671.00 en tu cuenta de Ahorros el 03/09/2026 a las 18:42. Si tienes dudas, llamanos al 018000931987. A tu lado siempre.',
+    // El Atajo manda una categoria fija de GASTO (igual que para transferencias);
+    // el backend debe ignorarla y usar "Otros ingresos" de todas formas.
+    categoria_id: expenseCategory.id,
+    request_id: `${widgetExpenseRequestId}-mensaje-ingreso`,
+  })
+  if (
+    widgetIncomeFromMessage.movimiento?.tipo !== 'ingreso'
+    || widgetIncomeFromMessage.movimiento?.monto !== 1071671
+    || widgetIncomeFromMessage.movimiento?.categoria !== 'Otros ingresos'
+    || widgetIncomeFromMessage.movimiento?.descripcion !== 'Bancolombia: Recibiste un pago PROVEEDOR de RENTIO SAS por $1,071,671.00 en tu cuenta de Ahorros el 03/09/2026 a las 18:42.'
+    || !String(widgetIncomeFromMessage.text ?? '').startsWith('✅ Ingreso registrado')
+  ) {
+    throw new Error(`Widget de gastos no detecto un ingreso desde el mensaje: ${JSON.stringify(widgetIncomeFromMessage)}`)
+  }
+
   const autoIdMensaje = `Bancolombia: Transferiste $32,000.00 desde tu cuenta 5702 a la cuenta *9988776655 el 12/08/2026 a las 20:${notificationSmokeRunId.toString().padStart(2, '0').slice(-2)}. ¿Dudas? Llamanos al 018000931987. Estamos cerca.`
   const widgetExpenseAutoId = await post('/widget/expenses?token=smoke-expenses-token', {
     mensaje: autoIdMensaje,
