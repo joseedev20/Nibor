@@ -389,7 +389,7 @@ onMounted(loadData)
 
           <label class="grid gap-1 text-sm">
             <span class="font-medium text-zinc-700 dark:text-zinc-300">Descripción</span>
-            <input v-model="form.descripcion" type="text" class="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
+            <textarea v-model="form.descripcion" rows="3" class="resize-y rounded-lg border border-zinc-200 bg-white px-3 py-2 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"></textarea>
           </label>
 
           <div v-if="editorError" class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300">{{ editorError }}</div>
