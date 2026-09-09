@@ -26,9 +26,12 @@ database_id = "34265deb-5084-4192-b412-c2f890b18655"
 migrations_dir = "migrations"
 
 # Cron de notificaciones frecuente: las reglas del backend deciden si toca avisar.
+# Cada 5 min (no 15) para que los recordatorios con insistencia de 5/10/15
+# minutos (ej. una pastilla) realmente se revisen a tiempo — 15 min es el piso
+# real de cualquier insistencia menor a eso.
 # Solo corre en producción; en local usar POST /api/notifications/run.
 [triggers]
-crons = ["*/15 * * * *"]
+crons = ["*/5 * * * *"]
 
 # Archivos adjuntos (PDFs de SOAT, tecnomecánica, etc.).
 # Local: wrangler dev lo simula solo. Antes del primer deploy remoto:

@@ -11,16 +11,19 @@ const editorOpen = ref(false)
 const showCompleted = ref(false)
 
 const REPETICIONES = [
-  { value: '1', label: 'cada hora' },
-  { value: '2', label: 'cada 2 horas' },
-  { value: '3', label: 'cada 3 horas' },
-  { value: '4', label: 'cada 4 horas' },
-  { value: '6', label: 'cada 6 horas' },
-  { value: '8', label: 'cada 8 horas' },
-  { value: '12', label: 'cada 12 horas' },
-  { value: '24', label: 'una vez al día' },
+  { value: '5', label: 'cada 5 minutos' },
+  { value: '10', label: 'cada 10 minutos' },
+  { value: '15', label: 'cada 15 minutos' },
+  { value: '60', label: 'cada hora' },
+  { value: '120', label: 'cada 2 horas' },
+  { value: '180', label: 'cada 3 horas' },
+  { value: '240', label: 'cada 4 horas' },
+  { value: '360', label: 'cada 6 horas' },
+  { value: '480', label: 'cada 8 horas' },
+  { value: '720', label: 'cada 12 horas' },
+  { value: '1440', label: 'una vez al día' },
 ]
-const repeatHours = ref('4')
+const repeatMinutes = ref('240')
 const repeatSaved = ref(false)
 let repeatSavedTimer = null
 
@@ -39,13 +42,13 @@ const form = reactive({
   notas: '',
   frecuencia_dias: null,
   frecuencia_custom: '',
-  repetir_horas: '',
+  repetir_minutos: '',
   proxima_fecha: '',
   hora: '',
 })
 
 const generalRepeatLabel = computed(() => (
-  REPETICIONES.find((option) => option.value === repeatHours.value)?.label ?? 'cada 4 horas'
+  REPETICIONES.find((option) => option.value === repeatMinutes.value)?.label ?? 'cada 4 horas'
 ))
 
 const pendientes = computed(() => reminders.value.filter((item) => item.estado === 'hoy' || item.estado === 'vencido'))
@@ -66,8 +69,8 @@ async function fetchJson(path, options = {}) {
 async function loadRepeatSetting() {
   try {
     const data = await fetchJson('/api/notifications/settings')
-    const value = String(data.recordatorios_repetir_horas ?? '4')
-    repeatHours.value = REPETICIONES.some((option) => option.value === value) ? value : '4'
+    const value = String(data.recordatorios_repetir_minutos ?? '240')
+    repeatMinutes.value = REPETICIONES.some((option) => option.value === value) ? value : '240'
   } catch {
     // el selector se queda en el valor por defecto
   }
@@ -75,13 +78,13 @@ async function loadRepeatSetting() {
 
 async function saveRepeatSetting(event) {
   const value = event.target.value
-  const previous = repeatHours.value
-  repeatHours.value = value
+  const previous = repeatMinutes.value
+  repeatMinutes.value = value
   pageError.value = ''
   try {
     await fetchJson('/api/notifications/settings', {
       method: 'PUT',
-      body: JSON.stringify({ recordatorios_repetir_horas: value }),
+      body: JSON.stringify({ recordatorios_repetir_minutos: value }),
     })
     repeatSaved.value = true
     window.clearTimeout(repeatSavedTimer)
@@ -89,7 +92,7 @@ async function saveRepeatSetting(event) {
       repeatSaved.value = false
     }, 2000)
   } catch (error) {
-    repeatHours.value = previous
+    repeatMinutes.value = previous
     pageError.value = error.message
   }
 }
@@ -125,9 +128,9 @@ function subtitle(reminder) {
   }
   if (reminder.hora) parts.push(reminder.hora)
   parts.push(frecuenciaLabel(reminder))
-  if (reminder.repetir_horas) {
-    const label = REPETICIONES.find((option) => option.value === String(reminder.repetir_horas))?.label
-      ?? `cada ${reminder.repetir_horas} horas`
+  if (reminder.repetir_minutos) {
+    const label = REPETICIONES.find((option) => option.value === String(reminder.repetir_minutos))?.label
+      ?? `cada ${reminder.repetir_minutos} minutos`
     parts.push(`avisa ${label}`)
   }
   return parts.join(' · ')
@@ -141,7 +144,7 @@ function openEditor(reminder = null) {
   const isPreset = FRECUENCIAS.some((item) => item.value === frecuencia)
   form.frecuencia_dias = isPreset ? frecuencia : 'custom'
   form.frecuencia_custom = isPreset ? '' : String(frecuencia ?? '')
-  form.repetir_horas = reminder?.repetir_horas ? String(reminder.repetir_horas) : ''
+  form.repetir_minutos = reminder?.repetir_minutos ? String(reminder.repetir_minutos) : ''
   form.proxima_fecha = reminder?.proxima_fecha ?? new Date().toISOString().slice(0, 10)
   form.hora = reminder?.hora ?? ''
   editorError.value = ''
@@ -161,7 +164,7 @@ async function saveReminder() {
         titulo: form.titulo,
         notas: form.notas || null,
         frecuencia_dias: frecuencia,
-        repetir_horas: form.repetir_horas === '' ? null : Number(form.repetir_horas),
+        repetir_minutos: form.repetir_minutos === '' ? null : Number(form.repetir_minutos),
         proxima_fecha: form.proxima_fecha,
         hora: form.hora || null,
       }),
@@ -230,7 +233,7 @@ onBeforeUnmount(() => window.clearTimeout(repeatSavedTimer))
         </p>
         <label class="mt-3 flex flex-wrap items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300">
           <span>🔔 Los pendientes avisan</span>
-          <select :value="repeatHours" class="h-9 rounded-lg border border-zinc-200 bg-white px-2 text-sm text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100" @change="saveRepeatSetting">
+          <select :value="repeatMinutes" class="h-9 rounded-lg border border-zinc-200 bg-white px-2 text-sm text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100" @change="saveRepeatSetting">
             <option v-for="option in REPETICIONES" :key="option.value" :value="option.value">{{ option.label }}</option>
           </select>
           <span v-if="repeatSaved" class="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Guardado ✓</span>
@@ -374,7 +377,7 @@ onBeforeUnmount(() => window.clearTimeout(repeatSavedTimer))
 
           <label class="grid gap-1 text-sm">
             <span class="font-medium text-zinc-700 dark:text-zinc-300">¿Con qué insistencia avisa?</span>
-            <select v-model="form.repetir_horas" class="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
+            <select v-model="form.repetir_minutos" class="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
               <option value="">Usar el general ({{ generalRepeatLabel }})</option>
               <option v-for="option in REPETICIONES" :key="option.value" :value="option.value">{{ option.label }}</option>
             </select>

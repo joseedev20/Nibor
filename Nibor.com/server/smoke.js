@@ -1094,13 +1094,42 @@ async function run() {
   })
   if (!String(invalidReminder.error ?? '').includes('frecuencia')) throw new Error('Recordatorio no rechazo frecuencia invalida')
 
-  const customRepeatReminder = await put(`/reminders/${recurringReminder.id}`, { repetir_horas: 1 })
-  if (customRepeatReminder.repetir_horas !== 1) throw new Error('Recordatorio no guardo repetir_horas propio')
+  const customRepeatReminder = await put(`/reminders/${recurringReminder.id}`, { repetir_minutos: 5 })
+  if (customRepeatReminder.repetir_minutos !== 5) throw new Error('Recordatorio no guardo repetir_minutos propio')
   const invalidRepeat = await expectFailure(`/reminders/${recurringReminder.id}`, {
     method: 'PUT',
-    body: JSON.stringify({ repetir_horas: 30 }),
+    body: JSON.stringify({ repetir_minutos: 3 }),
   })
-  if (!String(invalidRepeat.error ?? '').includes('repetición')) throw new Error('Recordatorio no rechazo repetir_horas invalido')
+  if (!String(invalidRepeat.error ?? '').includes('repetición')) throw new Error('Recordatorio no rechazo repetir_minutos invalido')
+  const invalidRepeatHigh = await expectFailure(`/reminders/${recurringReminder.id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ repetir_minutos: 2000 }),
+  })
+  if (!String(invalidRepeatHigh.error ?? '').includes('repetición')) throw new Error('Recordatorio no rechazo repetir_minutos por encima del maximo')
+
+  // Insistencia de 5 minutos: misma franja (0 y 3 min) no duplica, franja
+  // siguiente (5 min) si genera un aviso nuevo.
+  const fiveMinReminder = await post('/reminders', {
+    titulo: `Smoke insistencia 5min ${notificationSmokeRunId}`,
+    proxima_fecha: '2000-02-01',
+    repetir_minutos: 5,
+  })
+  const fiveMinRunA = await post('/notifications/run', { fecha: '2000-02-01', hora: 9, minuto: 0 })
+  const fiveMinNotifsA = await request('/notifications?fecha=2000-02-01')
+  const fiveMinMatchA = fiveMinNotifsA.notificaciones.filter((item) => String(item.titulo).includes(`Smoke insistencia 5min ${notificationSmokeRunId}`))
+  if (fiveMinMatchA.length !== 1) throw new Error(`Recordatorio de 5 min no genero exactamente un aviso en la franja 0-4: ${JSON.stringify(fiveMinMatchA)}`)
+
+  await post('/notifications/run', { fecha: '2000-02-01', hora: 9, minuto: 3 })
+  const fiveMinNotifsB = await request('/notifications?fecha=2000-02-01')
+  const fiveMinMatchB = fiveMinNotifsB.notificaciones.filter((item) => String(item.titulo).includes(`Smoke insistencia 5min ${notificationSmokeRunId}`))
+  if (fiveMinMatchB.length !== 1) throw new Error('Recordatorio de 5 min duplico dentro de la misma franja (min 0 y 3)')
+
+  await post('/notifications/run', { fecha: '2000-02-01', hora: 9, minuto: 5 })
+  const fiveMinNotifsC = await request('/notifications?fecha=2000-02-01')
+  const fiveMinMatchC = fiveMinNotifsC.notificaciones.filter((item) => String(item.titulo).includes(`Smoke insistencia 5min ${notificationSmokeRunId}`))
+  if (fiveMinMatchC.length !== 2) throw new Error(`Recordatorio de 5 min no genero un aviso nuevo en la franja siguiente (min 5): ${JSON.stringify(fiveMinMatchC)}`)
+
+  await post(`/reminders/${fiveMinReminder.id}/complete`, {})
 
   const onceReminder = await post('/reminders', {
     titulo: `Smoke pendiente ${notificationSmokeRunId}`,

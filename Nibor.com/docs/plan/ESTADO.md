@@ -1,6 +1,6 @@
 # Estado compartido — Nibor.com
 
-Actualizado: 2026-08-12 -05:00
+Actualizado: 2026-09-09 -05:00
 
 ## Decisión activa
 
@@ -53,6 +53,7 @@ Actualizado: 2026-08-12 -05:00
 
 ## Handoff actual
 
+- 2026-09-09: Claude cambió la insistencia de Recordatorios de horas a minutos (migración `0035_reminder_repeat_minutes.sql`: columna `reminders.repetir_horas` → `repetir_minutos`, valores existentes ×60; setting `recordatorios_repetir_horas` → `recordatorios_repetir_minutos` en `notification_settings`, también ×60) para poder avisar cada 5/10/15 min en casos que no aguantan una hora (ej. una pastilla). El dedupe de la franja en `notifications.js` ahora es por minutos desde medianoche (`rec:{id}:{fecha}:{franja de 4 dígitos}`) en vez de por hora. El cron de `wrangler.toml` pasó de `*/15 * * * *` a `*/5 * * * *` — sin eso, 5/10 min no serían reales (el piso de insistencia es la frecuencia del cron). `RecordatoriosView.vue` y `NotificacionesView.vue` actualizados con el nuevo selector (5/10/15 min + las horas de antes). Rango válido: 5–1440 min. Smoke agrega un caso de franjas de 5 min (misma franja no duplica, franja siguiente sí avisa de nuevo).
 - 2026-08-12: Claude agregó detección automática de transferencias de Bancolombia en `POST /api/widget/expenses`: el body acepta un campo nuevo `mensaje` con el texto crudo de la notificación; si `monto`/`descripcion` no vienen explícitos, se extraen del mensaje (patrón `transferiste $<monto>`; destino de cuenta `a la cuenta *NNN` o de llave Bre-B `desde tu cuenta *NNN a NOMBRE el fecha`). `categoria`/`categoria_id` y `request_id` siguen siendo obligatorios como antes; el flujo manual (monto+descripción explícitos) no cambió. Doc actualizado en `docs/ATAJO_GASTOS.md` con el flujo de automatización de Atajos por notificación (sin interacción). Smoke cubre los dos formatos de mensaje y el rechazo cuando no hay patrón de transferencia. npm test, build y smoke aislado OK.
 - 2026-08-12: Claude corrigió el modo oscuro automático (menú `App.vue`): versiones previas guardaban `theme` en cada visita aunque el usuario nunca tocara el botón, así que todo el mundo tenía ya un valor guardado que bloqueaba el horario automático (18:00–08:59 oscuro, 09:00–17:59 claro, hora de Bogotá). Se agregó la bandera `theme-override`, que solo se marca al usar el botón de verdad; sin ella el tema sigue el reloj y se revisa cada minuto. Verificado con Playwright simulando la hora del sistema en los bordes exactos (8:59/9:00, 17:59/18:00) y el caso real reportado (theme viejo + hora nocturna).
 - 2026-08-12: Claude arregló el menú lateral (`App.vue`): el `<nav>` interno no tenía `overflow-y-auto`/`min-h-0`, así que con poco alto de ventana (zoom alto) los últimos ítems (Bansky, Configuración, Cerrar sesión) quedaban fuera del viewport sin ninguna forma de alcanzarlos. Ahora el `<nav>` central scrollea solo, dejando logo y pie de menú siempre visibles. Verificado con Playwright en viewport de 500px de alto.

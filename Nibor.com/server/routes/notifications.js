@@ -15,7 +15,7 @@ const SETTING_KEYS = new Set([
   'prioridad_suscripciones', 'prioridad_habitos', 'prioridad_vehiculos', 'prioridad_eventos', 'prioridad_recordatorios',
   'sonido_suscripciones', 'sonido_habitos', 'sonido_vehiculos', 'sonido_eventos', 'sonido_recordatorios',
   'silencio_inicio', 'silencio_fin', 'pausado_hasta', 'resumen_diario', 'vencida_recordar_cada',
-  'recordatorios_repetir_horas',
+  'recordatorios_repetir_minutos',
   'habitos_inicio', 'habitos_fin', 'habitos_cada_min', 'habitos_franjas',
 ])
 
@@ -301,18 +301,22 @@ async function checkEventos(db, settings, hoy, diasAntes) {
 }
 
 // Recordatorios: avisa el día programado y, mientras no se marque hecho,
-// insiste VARIAS VECES AL DÍA (una por franja de `recordatorios_repetir_horas`
-// horas, dedupe por franja) y sigue así los días siguientes si queda vencido.
+// insiste VARIAS VECES AL DÍA (una por franja de `recordatorios_repetir_minutos`
+// minutos, dedupe por franja) y sigue así los días siguientes si queda
+// vencido. La franja es del día completo (0-1439 min desde medianoche), no
+// solo de la hora, para poder insistir cada 5/10/15 min (ej. una pastilla)
+// sin esperar a que cambie la hora. El cron corre cada 5 min (wrangler.toml),
+// que es el piso real de qué tan seguido puede insistir un recordatorio.
 // Si tiene hora, el día programado espera a esa hora. En horario de silencio
 // no se generan avisos para no acumular de madrugada.
 async function checkRecordatorios(db, settings, hoy, hora, minuto) {
   if (inQuietHours(settings, hora)) return 0
-  const repetir = Number(settings.recordatorios_repetir_horas ?? 4)
-  const repetirGlobal = Number.isInteger(repetir) && repetir >= 1 && repetir <= 24 ? repetir : 4
+  const repetir = Number(settings.recordatorios_repetir_minutos ?? 240)
+  const repetirGlobal = Number.isInteger(repetir) && repetir >= 5 && repetir <= 1440 ? repetir : 240
 
   const rows = await all(
     db,
-    `SELECT id, titulo, notas, frecuencia_dias, repetir_horas, proxima_fecha, hora
+    `SELECT id, titulo, notas, frecuencia_dias, repetir_minutos, proxima_fecha, hora
      FROM reminders
      WHERE activo = 1 AND completado_en IS NULL AND proxima_fecha <= ?`,
     hoy,
@@ -323,9 +327,9 @@ async function checkRecordatorios(db, settings, hoy, hora, minuto) {
     const reminderMinutes = timeToMinutes(reminder.hora, null)
     if (reminderMinutes !== null && reminder.proxima_fecha === hoy && nowMinutes < reminderMinutes) continue
     // Insistencia propia del recordatorio; si no tiene, usa el ajuste general
-    const propio = Number(reminder.repetir_horas)
-    const repetirHoras = Number.isInteger(propio) && propio >= 1 && propio <= 24 ? propio : repetirGlobal
-    const slot = Math.floor(hora / repetirHoras) * repetirHoras
+    const propio = Number(reminder.repetir_minutos)
+    const repetirMinutos = Number.isInteger(propio) && propio >= 5 && propio <= 1440 ? propio : repetirGlobal
+    const slot = Math.floor(nowMinutes / repetirMinutos) * repetirMinutos
     const atraso = Math.round(
       (new Date(`${hoy}T00:00:00Z`) - new Date(`${reminder.proxima_fecha}T00:00:00Z`)) / 86400000,
     )
@@ -340,7 +344,7 @@ async function checkRecordatorios(db, settings, hoy, hora, minuto) {
       titulo,
       mensaje: [reminder.notas, frecuencia].filter(Boolean).join(' · '),
       fecha: hoy,
-      dedupe: `rec:${reminder.id}:${hoy}:${String(slot).padStart(2, '0')}`,
+      dedupe: `rec:${reminder.id}:${hoy}:${String(slot).padStart(4, '0')}`,
     })) nuevas++
   }
   return nuevas

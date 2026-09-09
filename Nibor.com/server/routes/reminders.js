@@ -45,14 +45,14 @@ function normalizeReminder(body, current = {}) {
   const frecuencia = body.frecuencia_dias === undefined
     ? current.frecuencia_dias ?? null
     : (body.frecuencia_dias === null || body.frecuencia_dias === '' ? null : toInteger(body.frecuencia_dias))
-  const repetir = body.repetir_horas === undefined
-    ? current.repetir_horas ?? null
-    : (body.repetir_horas === null || body.repetir_horas === '' ? null : toInteger(body.repetir_horas))
+  const repetir = body.repetir_minutos === undefined
+    ? current.repetir_minutos ?? null
+    : (body.repetir_minutos === null || body.repetir_minutos === '' ? null : toInteger(body.repetir_minutos))
   return {
     titulo: body.titulo === undefined ? current.titulo : cleanText(body.titulo),
     notas: body.notas === undefined ? current.notas ?? null : cleanNullableText(body.notas),
     frecuencia_dias: frecuencia,
-    repetir_horas: repetir,
+    repetir_minutos: repetir,
     proxima_fecha: body.proxima_fecha === undefined ? current.proxima_fecha : cleanText(body.proxima_fecha),
     hora: body.hora === undefined ? current.hora ?? null : cleanNullableText(body.hora),
     activo: body.activo === undefined ? current.activo ?? 1 : (body.activo ? 1 : 0),
@@ -67,9 +67,9 @@ function validateReminder(reminder) {
     && (!Number.isInteger(reminder.frecuencia_dias) || reminder.frecuencia_dias < 1 || reminder.frecuencia_dias > 365)) {
     return 'La frecuencia debe estar entre 1 y 365 días (o vacía para una sola vez)'
   }
-  if (reminder.repetir_horas !== null
-    && (!Number.isInteger(reminder.repetir_horas) || reminder.repetir_horas < 1 || reminder.repetir_horas > 24)) {
-    return 'La repetición del aviso debe estar entre 1 y 24 horas (o vacía para usar el ajuste general)'
+  if (reminder.repetir_minutos !== null
+    && (!Number.isInteger(reminder.repetir_minutos) || reminder.repetir_minutos < 5 || reminder.repetir_minutos > 1440)) {
+    return 'La repetición del aviso debe estar entre 5 minutos y 24 horas (o vacía para usar el ajuste general)'
   }
   if (!isValidDate(reminder.proxima_fecha)) return 'La fecha del recordatorio no es una fecha válida'
   if (reminder.hora !== null && !isValidTime(reminder.hora)) return 'La hora debe tener formato HH:MM'
@@ -95,9 +95,9 @@ reminders.post('/', async (c) => {
 
   const meta = await run(
     c.env.DB,
-    `INSERT INTO reminders (titulo, notas, frecuencia_dias, repetir_horas, proxima_fecha, hora, activo)
+    `INSERT INTO reminders (titulo, notas, frecuencia_dias, repetir_minutos, proxima_fecha, hora, activo)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    reminder.titulo, reminder.notas, reminder.frecuencia_dias, reminder.repetir_horas, reminder.proxima_fecha, reminder.hora, reminder.activo,
+    reminder.titulo, reminder.notas, reminder.frecuencia_dias, reminder.repetir_minutos, reminder.proxima_fecha, reminder.hora, reminder.activo,
   )
   const row = await first(c.env.DB, 'SELECT * FROM reminders WHERE id = ?', meta.last_row_id)
   return ok(c, enrichReminder(row), 201)
@@ -120,9 +120,9 @@ reminders.put('/:id', async (c) => {
   await run(
     c.env.DB,
     `UPDATE reminders
-     SET titulo = ?, notas = ?, frecuencia_dias = ?, repetir_horas = ?, proxima_fecha = ?, hora = ?, activo = ?, completado_en = ?, updated_at = datetime('now')
+     SET titulo = ?, notas = ?, frecuencia_dias = ?, repetir_minutos = ?, proxima_fecha = ?, hora = ?, activo = ?, completado_en = ?, updated_at = datetime('now')
      WHERE id = ?`,
-    reminder.titulo, reminder.notas, reminder.frecuencia_dias, reminder.repetir_horas, reminder.proxima_fecha, reminder.hora, reminder.activo, completadoEn, id,
+    reminder.titulo, reminder.notas, reminder.frecuencia_dias, reminder.repetir_minutos, reminder.proxima_fecha, reminder.hora, reminder.activo, completadoEn, id,
   )
   const row = await first(c.env.DB, 'SELECT * FROM reminders WHERE id = ?', id)
   return ok(c, enrichReminder(row))
