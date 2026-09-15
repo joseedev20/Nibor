@@ -41,6 +41,7 @@ function cardExpensesTotal(cardId) {
 const filteredMovements = computed(() => {
   return movements.value.filter((movement) => {
     if (movement.tipo !== 'gasto') return false
+    if (movement.card_id === null || movement.card_id === undefined) return false
     if (cardFilter.value === '') return true
     return Number(movement.card_id) === Number(cardFilter.value)
   })
@@ -294,7 +295,7 @@ onMounted(() => {
       <div class="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 px-4 py-3 dark:border-zinc-800">
         <div>
           <h2 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Historial de gastos</h2>
-          <p class="text-xs text-zinc-500 dark:text-zinc-400">{{ monthLabel }}</p>
+          <p class="text-xs text-zinc-500 dark:text-zinc-400">{{ monthLabel }} · solo gastos con tarjeta o cuenta identificada</p>
         </div>
         <div class="flex items-center gap-3">
           <select v-model="cardFilter" class="h-9 rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
@@ -306,7 +307,7 @@ onMounted(() => {
           <span class="text-sm font-semibold tabular-nums text-rose-700 dark:text-rose-400">{{ formatCOP(filteredTotal) }}</span>
         </div>
       </div>
-      <div v-if="!filteredMovements.length" class="p-8 text-center text-sm text-zinc-400">Sin gastos en {{ monthLabel }}.</div>
+      <div v-if="!filteredMovements.length" class="p-8 text-center text-sm text-zinc-400">Sin gastos con tarjeta o cuenta identificada en {{ monthLabel }}.</div>
       <div v-else class="divide-y divide-zinc-100 dark:divide-zinc-800">
         <div v-for="movement in filteredMovements" :key="movement.id" class="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-3">
           <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-50 text-sm dark:bg-zinc-800">{{ movement.categoria_icono ?? '·' }}</span>
