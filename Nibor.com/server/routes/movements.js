@@ -58,10 +58,12 @@ async function getMovementById(db, id) {
   return first(
     db,
     `SELECT
-       m.id, m.fecha, m.tipo, m.categoria_id, m.descripcion, m.monto, m.subscription_id,
-       c.nombre AS categoria_nombre, c.icono AS categoria_icono, c.color AS categoria_color
+       m.id, m.fecha, m.tipo, m.categoria_id, m.descripcion, m.monto, m.subscription_id, m.card_id,
+       c.nombre AS categoria_nombre, c.icono AS categoria_icono, c.color AS categoria_color,
+       t.nombre AS card_nombre, t.entidad AS card_entidad, t.ultimos_digitos AS card_ultimos_digitos
      FROM movements m
      LEFT JOIN categories c ON c.id = m.categoria_id
+     LEFT JOIN cards t ON t.id = m.card_id
      WHERE m.id = ?`,
     id,
   )
@@ -83,6 +85,7 @@ function normalizeMovement(body, current = {}) {
     descripcion: body.descripcion === undefined ? current.descripcion ?? '' : String(body.descripcion ?? '').trim(),
     monto: body.monto === undefined ? current.monto : toNumber(body.monto),
     subscription_id: body.subscription_id === undefined ? current.subscription_id ?? null : toInteger(body.subscription_id, null),
+    card_id: body.card_id === undefined ? current.card_id ?? null : toInteger(body.card_id, null),
   }
 }
 
@@ -92,6 +95,7 @@ function validateMovement(movement) {
   if (movement.categoria_id !== null && !Number.isInteger(movement.categoria_id)) return 'La categoría debe ser válida'
   if (!isNonNegative(movement.monto)) return 'El monto debe ser mayor o igual a 0'
   if (movement.subscription_id !== null && !Number.isInteger(movement.subscription_id)) return 'La suscripción debe ser válida'
+  if (movement.card_id !== null && !Number.isInteger(movement.card_id)) return 'La tarjeta debe ser válida'
   return null
 }
 
@@ -102,10 +106,12 @@ movements.get('/', async (c) => {
   const rows = await all(
     c.env.DB,
     `SELECT
-       m.id, m.fecha, m.tipo, m.categoria_id, m.descripcion, m.monto, m.subscription_id,
-       c.nombre AS categoria_nombre, c.icono AS categoria_icono, c.color AS categoria_color
+       m.id, m.fecha, m.tipo, m.categoria_id, m.descripcion, m.monto, m.subscription_id, m.card_id,
+       c.nombre AS categoria_nombre, c.icono AS categoria_icono, c.color AS categoria_color,
+       t.nombre AS card_nombre, t.entidad AS card_entidad, t.ultimos_digitos AS card_ultimos_digitos
      FROM movements m
      LEFT JOIN categories c ON c.id = m.categoria_id
+     LEFT JOIN cards t ON t.id = m.card_id
      ${filters.sql}
      ORDER BY m.fecha DESC, m.id DESC`,
     ...filters.params,
@@ -126,14 +132,15 @@ movements.post('/', async (c) => {
 
   const meta = await run(
     c.env.DB,
-    `INSERT INTO movements (fecha, tipo, categoria_id, descripcion, monto, subscription_id)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO movements (fecha, tipo, categoria_id, descripcion, monto, subscription_id, card_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
     movement.fecha,
     movement.tipo,
     movement.categoria_id,
     movement.descripcion,
     movement.monto,
     movement.subscription_id,
+    movement.card_id,
   )
 
   return ok(c, await getMovementById(c.env.DB, meta.last_row_id), 201)
@@ -159,7 +166,7 @@ movements.put('/:id', async (c) => {
   await run(
     c.env.DB,
     `UPDATE movements
-     SET fecha = ?, tipo = ?, categoria_id = ?, descripcion = ?, monto = ?, subscription_id = ?
+     SET fecha = ?, tipo = ?, categoria_id = ?, descripcion = ?, monto = ?, subscription_id = ?, card_id = ?
      WHERE id = ?`,
     movement.fecha,
     movement.tipo,
@@ -167,6 +174,7 @@ movements.put('/:id', async (c) => {
     movement.descripcion,
     movement.monto,
     movement.subscription_id,
+    movement.card_id,
     id,
   )
 

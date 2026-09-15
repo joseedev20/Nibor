@@ -18,6 +18,7 @@ const routes = [
   { path: '/casa', name: 'casa', component: () => import('./views/CasaView.vue'), meta: { title: 'Casa' } },
   { path: '/bansky', name: 'bansky', component: () => import('./views/BanskyView.vue'), meta: { title: 'Bansky' } },
   { path: '/gastos', name: 'gastos', component: () => import('./views/GastosView.vue'), meta: { title: 'Gastos e Ingresos' } },
+  { path: '/tarjetas', name: 'tarjetas', component: () => import('./views/TarjetasView.vue'), meta: { title: 'Tarjetas' } },
   { path: '/suscripciones', name: 'suscripciones', component: () => import('./views/SuscripcionesView.vue'), meta: { title: 'Suscripciones' } },
   { path: '/cierre', name: 'cierre', component: () => import('./views/CierreView.vue'), meta: { title: 'Cierre de mes' } },
   { path: '/config', name: 'config', component: () => import('./views/ConfigView.vue'), meta: { title: 'Configuración' } },

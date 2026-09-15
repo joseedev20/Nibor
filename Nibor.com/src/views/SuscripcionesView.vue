@@ -506,7 +506,7 @@ onMounted(() => {
           <span class="tabular-nums text-zinc-500 dark:text-zinc-400">{{ formatCOP(card.total_mensual) }}/mes · {{ card.suscripciones }} fijos</span>
         </div>
       </div>
-      <p class="mt-2 text-xs text-zinc-400 dark:text-zinc-500">Las tarjetas se administran en Configuración (solo nombre — nunca guardes el número).</p>
+      <p class="mt-2 text-xs text-zinc-400 dark:text-zinc-500">Las tarjetas y cuentas se administran en <RouterLink to="/tarjetas" class="underline underline-offset-2 hover:text-zinc-600 dark:hover:text-zinc-300">Tarjetas</RouterLink>.</p>
     </section>
 
     <!-- Histórico -->

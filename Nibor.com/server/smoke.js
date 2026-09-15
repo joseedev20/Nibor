@@ -257,11 +257,37 @@ async function run() {
     nombre: 'Smoke tarjeta prueba',
     color: '#2563eb',
     activa: true,
+    tipo: 'credito',
+    entidad: 'Bancolombia',
+    ultimos_digitos: '9317',
+    cupo: 5000000,
   })
-  if (!card.id) throw new Error('No se creo tarjeta smoke')
+  if (!card.id || card.tipo !== 'credito' || card.entidad !== 'Bancolombia' || card.ultimos_digitos !== '9317' || Number(card.cupo) !== 5000000) {
+    throw new Error(`No se creo tarjeta smoke con los campos nuevos: ${JSON.stringify(card)}`)
+  }
 
   const editedCard = await put(`/cards/${card.id}`, { nombre: `${card.nombre} editada`, color: '#059669' })
   if (editedCard.color !== '#059669') throw new Error(`Color de tarjeta inesperado: ${editedCard.color}`)
+
+  const invalidDigits = await expectFailure('/cards', {
+    method: 'POST',
+    body: JSON.stringify({ nombre: 'Smoke digitos invalidos', ultimos_digitos: '931' }),
+  })
+  if (!String(invalidDigits.error ?? '').includes('4')) throw new Error('Tarjeta no rechazo ultimos_digitos con menos de 4 numeros')
+
+  const invalidTipo = await expectFailure('/cards', {
+    method: 'POST',
+    body: JSON.stringify({ nombre: 'Smoke tipo invalido', tipo: 'ahorros' }),
+  })
+  if (!String(invalidTipo.error ?? '').includes('tipo')) throw new Error('Tarjeta no rechazo tipo invalido')
+
+  const accountCard = await post('/cards', {
+    nombre: 'Smoke cuenta ahorros',
+    tipo: 'cuenta',
+    entidad: 'Bancolombia',
+    ultimos_digitos: '5702',
+  })
+  if (accountCard.tipo !== 'cuenta') throw new Error('No se creo la cuenta smoke')
 
   const subscription = await post('/subscriptions', {
     nombre: `Smoke suscripcion ${Date.now()}`,
@@ -1360,30 +1386,35 @@ async function run() {
     mensaje: 'Bancolombia: Transferiste $20,000.00 desde tu cuenta 5702 a la cuenta *3104772928 el 12/08/2026 a las 18:07. ¿Dudas? Llamanos al 018000931987. Estamos cerca.',
     categoria_id: expenseCategory.id,
     request_id: `${widgetExpenseRequestId}-mensaje-cuenta`,
+    fecha: `${smokeYear}-04-19`,
   })
   if (
     widgetExpenseFromAccountMessage.movimiento?.monto !== 20000
     || widgetExpenseFromAccountMessage.movimiento?.descripcion !== 'Bancolombia: Transferiste $20,000.00 desde tu cuenta 5702 a la cuenta *3104772928 el 12/08/2026 a las 18:07.'
+    || widgetExpenseFromAccountMessage.movimiento?.card_id !== accountCard.id
   ) {
-    throw new Error(`Widget de gastos no detecto monto/descripcion de mensaje con cuenta: ${JSON.stringify(widgetExpenseFromAccountMessage)}`)
+    throw new Error(`Widget de gastos no detecto monto/descripcion/tarjeta de mensaje con cuenta: ${JSON.stringify(widgetExpenseFromAccountMessage)}`)
   }
 
   const widgetExpenseFromNameMessage = await post('/widget/expenses?token=smoke-expenses-token', {
     mensaje: 'Bancolombia: JOSE, transferiste $105,600.00 a la llave 3232000500 desde tu cuenta *5702 a JHON MORERAS el 08/08/26 a las 13:09. Con Bre-b es de una y gratis. Dudas al 018000912345',
     categoria_id: expenseCategory.id,
     request_id: `${widgetExpenseRequestId}-mensaje-llave`,
+    fecha: `${smokeYear}-04-19`,
   })
   if (
     widgetExpenseFromNameMessage.movimiento?.monto !== 105600
     || widgetExpenseFromNameMessage.movimiento?.descripcion !== 'Bancolombia: JOSE, transferiste $105,600.00 a la llave 3232000500 desde tu cuenta *5702 a JHON MORERAS el 08/08/26 a las 13:09.'
+    || widgetExpenseFromNameMessage.movimiento?.card_id !== accountCard.id
   ) {
-    throw new Error(`Widget de gastos no detecto monto/descripcion de mensaje con llave: ${JSON.stringify(widgetExpenseFromNameMessage)}`)
+    throw new Error(`Widget de gastos no detecto monto/descripcion/tarjeta de mensaje con llave: ${JSON.stringify(widgetExpenseFromNameMessage)}`)
   }
 
   const widgetExpenseFromQrMessage = await post('/widget/expenses?token=smoke-expenses-token', {
     mensaje: 'Bancolombia: JOSE NICOLAS BORJA ARRIAGA pagaste $8,500.00 por codigo QR desde tu cuenta *5702 a la llave 0091542078 el 12/08/2026 a las 19:47. Con codigo QR es facil y de una. Dudas al 018000912345',
     categoria_id: expenseCategory.id,
     request_id: `${widgetExpenseRequestId}-mensaje-qr`,
+    fecha: `${smokeYear}-04-19`,
   })
   if (
     widgetExpenseFromQrMessage.movimiento?.monto !== 8500
@@ -1391,17 +1422,27 @@ async function run() {
   ) {
     throw new Error(`Widget de gastos no detecto monto/descripcion de mensaje de pago QR: ${JSON.stringify(widgetExpenseFromQrMessage)}`)
   }
+  if (widgetExpenseFromQrMessage.movimiento?.card_id !== accountCard.id) {
+    throw new Error(`Widget de gastos no vinculo la cuenta *5702 detectada en el mensaje: ${JSON.stringify(widgetExpenseFromQrMessage)}`)
+  }
 
   const widgetExpenseFromPurchaseMessage = await post('/widget/expenses?token=smoke-expenses-token', {
     mensaje: 'Bancolombia: Compraste COP654.139,00 en Farfetch.com con tu T.Cred *9317, el 05/09/2026 a las 22:07. Si tienes dudas, encuentranos aqui: 6045109095 o 018000931987. Estamos cerca.',
     categoria_id: expenseCategory.id,
     request_id: `${widgetExpenseRequestId}-mensaje-compra`,
+    fecha: `${smokeYear}-04-19`,
   })
   if (
     widgetExpenseFromPurchaseMessage.movimiento?.monto !== 654139
     || widgetExpenseFromPurchaseMessage.movimiento?.descripcion !== 'Bancolombia: Compraste COP654.139,00 en Farfetch.com con tu T.Cred *9317, el 05/09/2026 a las 22:07.'
   ) {
     throw new Error(`Widget de gastos no detecto monto/descripcion de mensaje de compra COP: ${JSON.stringify(widgetExpenseFromPurchaseMessage)}`)
+  }
+  if (
+    widgetExpenseFromPurchaseMessage.movimiento?.card_id !== card.id
+    || !String(widgetExpenseFromPurchaseMessage.text ?? '').includes('*9317')
+  ) {
+    throw new Error(`Widget de gastos no vinculo la tarjeta *9317 detectada en el mensaje: ${JSON.stringify(widgetExpenseFromPurchaseMessage)}`)
   }
 
   const widgetExpenseDeclined = await post('/widget/expenses?token=smoke-expenses-token', {
@@ -1424,6 +1465,7 @@ async function run() {
     || widgetIncomeFromMessage.movimiento?.monto !== 1071671
     || widgetIncomeFromMessage.movimiento?.categoria !== 'Otros ingresos'
     || widgetIncomeFromMessage.movimiento?.descripcion !== 'Bancolombia: Recibiste un pago PROVEEDOR de RENTIO SAS por $1,071,671.00 en tu cuenta de Ahorros el 03/09/2026 a las 18:42.'
+    || widgetIncomeFromMessage.movimiento?.card_id !== null
     || !String(widgetIncomeFromMessage.text ?? '').startsWith('✅ Ingreso registrado')
   ) {
     throw new Error(`Widget de gastos no detecto un ingreso desde el mensaje: ${JSON.stringify(widgetIncomeFromMessage)}`)
@@ -1433,6 +1475,7 @@ async function run() {
   const widgetExpenseAutoId = await post('/widget/expenses?token=smoke-expenses-token', {
     mensaje: autoIdMensaje,
     categoria_id: expenseCategory.id,
+    fecha: `${smokeYear}-04-19`,
   })
   if (!widgetExpenseAutoId.movimiento?.request_id || widgetExpenseAutoId.duplicado !== false) {
     throw new Error(`Widget de gastos no genero request_id automatico desde el mensaje: ${JSON.stringify(widgetExpenseAutoId)}`)
@@ -1441,6 +1484,7 @@ async function run() {
   const widgetExpenseAutoIdRepeat = await post('/widget/expenses?token=smoke-expenses-token', {
     mensaje: autoIdMensaje,
     categoria_id: expenseCategory.id,
+    fecha: `${smokeYear}-04-19`,
   })
   if (
     widgetExpenseAutoIdRepeat.duplicado !== true
@@ -1452,6 +1496,7 @@ async function run() {
   const widgetExpenseAutoIdDifferent = await post('/widget/expenses?token=smoke-expenses-token', {
     mensaje: autoIdMensaje.replace('$32,000.00', '$33,000.00'),
     categoria_id: expenseCategory.id,
+    fecha: `${smokeYear}-04-19`,
   })
   if (
     widgetExpenseAutoIdDifferent.duplicado !== false

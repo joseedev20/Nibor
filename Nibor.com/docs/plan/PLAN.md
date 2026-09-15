@@ -147,18 +147,25 @@ platforms        (id, nombre, color, orden, activa, tipo 'inversion'|'fondo')
 snapshots        (id, platform_id, anio, mes, saldo_inicial, aporte, retiros, saldo_final)
                  -- UNIQUE(platform_id, anio, mes). saldo_final NULL = mes pendiente
 categories       (id, nombre, tipo 'gasto'|'ingreso', icono, color)
-movements        (id, fecha, tipo 'gasto'|'ingreso', categoria_id, descripcion, monto, subscription_id NULL, vehicle_id NULL, pet_id NULL, external_source NULL, external_id NULL)
+movements        (id, fecha, tipo 'gasto'|'ingreso', categoria_id, descripcion, monto, subscription_id NULL, vehicle_id NULL, pet_id NULL, home_property_id NULL, external_source NULL, external_id NULL, card_id NULL)
                  -- vehicle_id agregado en migración 0017 para gastos de vehículos integrados a finanzas
                  -- pet_id agregado en migración 0027 para gastos de mascotas integrados a finanzas
+                 -- home_property_id agregado en migración 0032 para gastos/ingresos de propiedades de Casa
                  -- external_source/external_id agregados en 0034 para idempotencia de integraciones; UNIQUE por origen+id
+                 -- card_id agregado en migración 0036: tarjeta/cuenta del movimiento, elegida a mano o detectada
+                 -- por widgetExpenses.js por los últimos 4 dígitos del mensaje (ver tabla cards abajo)
 subscriptions    (id, nombre, monto, moneda, monto_original, tasa_cambio, margen_tasa_pct, tasa_cambio_fecha, dia_cobro, categoria_id, activa, tipo 'gasto'|'ingreso', automatica, card_id)
                  -- tipo agregado en migración 0002: recurrentes de ingreso (salario, arriendo recibido)
                  -- moneda/cambio agregados en migración 0006: monto queda como COP estimado
                  -- USD usa monto_original * TRM * (1 + margen_tasa_pct/100); al aplicar se usa TRM vigente si está disponible
                  -- automatica agregado en migración 0009: 1 = débito automático, 0 = pago manual con recordatorio
                  -- card_id agregado en migración 0010: enlaza un fijo de gasto con una tarjeta identificada por nombre
-cards            (id, nombre, color, activa)
-                 -- solo nombres identificadores; nunca números, vencimientos, CVV ni datos sensibles
+cards            (id, nombre, color, activa, tipo 'credito'|'debito'|'cuenta', entidad NULL, ultimos_digitos NULL, cupo NULL)
+                 -- solo nombre identificador + entidad + últimos 4 dígitos + cupo; nunca el número completo,
+                 -- vencimiento ni CVV. tipo/entidad/ultimos_digitos/cupo agregados en migración 0036: los
+                 -- últimos 4 dígitos NO son sensibles por sí solos (el banco los muestra en cada notificación)
+                 -- y sirven para que widgetExpenses.js detecte sola con qué tarjeta/cuenta fue un gasto
+                 -- capturado por mensaje (movements.card_id). Se administran en /tarjetas.
 goals            (id, nombre, monto_objetivo, activa, created_at)
 goal_allocations (id, goal_id, platform_id, porcentaje, monto_asignado)
                  -- la UI permite digitar porcentaje o valor COP; backend guarda ambos normalizados
@@ -246,7 +253,7 @@ home_administration_items (id, period_id, concepto, saldo_anterior, cuota_mes, n
 - `GET /api/exchange-rates/usd-cop` consulta la TRM vigente para estimar suscripciones en USD; si falla al aplicar recurrentes, se usa la tasa guardada en la suscripción.
 - `GET /api/subscriptions/reminders?anio=&mes=` devuelve pagos manuales activos sin movimiento aplicado en el mes.
 - `GET /api/subscriptions/history?anio=` devuelve histórico anual de fijos construido desde `movements.subscription_id` y un `resumen` backend con total de ingresos, gastos y balance del año.
-- `GET/POST/PUT/DELETE /api/cards` administra tarjetas por nombre/color y bloquea nombres con números largos.
+- `GET/POST/PUT/DELETE /api/cards` administra tarjetas y cuentas (nombre, tipo, entidad, últimos 4 dígitos, cupo, color); bloquea nombres con números largos y últimos_digitos que no sean exactamente 4 números. `DELETE` falla si hay fijos o movimientos vinculados. Vista dedicada en `/tarjetas`.
 - `GET/POST/PUT/DELETE /api/music/songs` administra el catálogo de canciones de Nibor Música y devuelve conteos por estado.
 - `GET/POST/PUT/DELETE /api/knowledge/items` administra recursos de aprendizaje y devuelve conteos por estado, tipo, idioma y año; `GET` acepta filtros `idioma=espanol|ingles` y `anio=YYYY`.
 - `GET/POST/PUT/DELETE /api/loans` administra préstamos personales y devuelve resumen calculado; `POST /api/loans/:id/return` marca un préstamo como devuelto.

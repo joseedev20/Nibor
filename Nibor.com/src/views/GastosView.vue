@@ -8,6 +8,7 @@ const selectedMonth = ref(now.getMonth() + 1)
 const movements = ref([])
 const categories = ref([])
 const subscriptions = ref([])
+const cards = ref([])
 const summary = ref(null)
 const loading = ref(false)
 const saving = ref(false)
@@ -58,6 +59,7 @@ function emptyForm(tipo = 'gasto') {
     tipo,
     categoria_id: '',
     subscription_id: '',
+    card_id: '',
     descripcion: '',
     monto: '',
   }
@@ -75,16 +77,18 @@ async function loadData() {
   error.value = ''
   try {
     const query = `anio=${selectedYear.value}&mes=${selectedMonth.value}`
-    const [movementsData, categoriesData, summaryData, subscriptionsData] = await Promise.all([
+    const [movementsData, categoriesData, summaryData, subscriptionsData, cardsData] = await Promise.all([
       fetchJson(`/api/movements?${query}`),
       fetchJson('/api/categories'),
       fetchJson(`/api/summary?${query}`),
       fetchJson('/api/subscriptions?activa=1'),
+      fetchJson('/api/cards?activa=1'),
     ])
     movements.value = movementsData
     categories.value = categoriesData
     summary.value = summaryData
     subscriptions.value = subscriptionsData
+    cards.value = cardsData
   } catch (err) {
     error.value = err.message
   } finally {
@@ -125,6 +129,7 @@ function openEdit(movement) {
     tipo: movement.tipo,
     categoria_id: movement.categoria_id ?? '',
     subscription_id: movement.subscription_id ?? '',
+    card_id: movement.card_id ?? '',
     descripcion: movement.descripcion ?? '',
     monto: movement.monto,
   }
@@ -146,6 +151,7 @@ async function saveMovement() {
     tipo: form.value.tipo,
     categoria_id: form.value.categoria_id === '' ? null : Number(form.value.categoria_id),
     subscription_id: form.value.subscription_id === '' ? null : Number(form.value.subscription_id),
+    card_id: form.value.card_id === '' ? null : Number(form.value.card_id),
     descripcion: form.value.descripcion,
     monto: Number(form.value.monto),
   }
@@ -317,7 +323,10 @@ onMounted(loadData)
             <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-zinc-100 text-base dark:bg-zinc-800">{{ movement.categoria_icono ?? '·' }}</span>
             <span class="min-w-0">
               <span class="block truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{{ movement.descripcion || movement.categoria_nombre || 'Sin descripción' }}</span>
-              <span class="block truncate text-xs text-zinc-500 dark:text-zinc-400">{{ formatDate(movement.fecha) }} · {{ movement.categoria_nombre ?? 'Sin categoría' }}</span>
+              <span class="block truncate text-xs text-zinc-500 dark:text-zinc-400">
+                {{ formatDate(movement.fecha) }} · {{ movement.categoria_nombre ?? 'Sin categoría' }}
+                <template v-if="movement.card_nombre"> · {{ movement.card_ultimos_digitos ? '💳' : '' }} {{ movement.card_nombre }}{{ movement.card_ultimos_digitos ? ` *${movement.card_ultimos_digitos}` : '' }}</template>
+              </span>
             </span>
             <span class="text-right text-sm font-semibold tabular-nums" :class="movement.tipo === 'ingreso' ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'">
               {{ movement.tipo === 'ingreso' ? '+' : '-' }} {{ formatCOP(movement.monto) }}
@@ -385,6 +394,16 @@ onMounted(loadData)
             <span class="text-xs text-zinc-500 dark:text-zinc-400">
               Vincula este movimiento a un ingreso/gasto fijo (ej. salario, arriendo) para que "Aplicar fijos" no lo duplique este mes.
             </span>
+          </label>
+
+          <label class="grid gap-1 text-sm">
+            <span class="font-medium text-zinc-700 dark:text-zinc-300">Tarjeta / cuenta</span>
+            <select v-model="form.card_id" class="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
+              <option value="">Ninguna</option>
+              <option v-for="card in cards" :key="card.id" :value="card.id">
+                {{ card.tipo === 'cuenta' ? '🏦' : '💳' }} {{ card.nombre }}{{ card.ultimos_digitos ? ` (•••• ${card.ultimos_digitos})` : '' }}
+              </option>
+            </select>
           </label>
 
           <label class="grid gap-1 text-sm">

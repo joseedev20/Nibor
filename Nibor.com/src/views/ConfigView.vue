@@ -1,6 +1,5 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { formatCOP } from '../utils/format.js'
 
 const categories = ref([])
 const loading = ref(false)
@@ -16,12 +15,6 @@ const platformEditorOpen = ref(false)
 const platformError = ref('')
 const platformSaving = ref(false)
 const platformForm = ref(emptyPlatformForm())
-
-const cards = ref([])
-const cardEditorOpen = ref(false)
-const cardError = ref('')
-const cardSaving = ref(false)
-const cardForm = ref(emptyCardForm())
 
 const expenseCategories = computed(() => categories.value.filter((category) => category.tipo === 'gasto'))
 const incomeCategories = computed(() => categories.value.filter((category) => category.tipo === 'ingreso'))
@@ -138,103 +131,6 @@ async function togglePlatform(platform) {
   }
 }
 
-// Tarjetas: nombres identificadores, nunca numeros ni datos sensibles.
-
-function emptyCardForm() {
-  return { id: null, nombre: '', color: '#2563eb', activa: true }
-}
-
-async function loadCards() {
-  try {
-    cards.value = await fetchJson('/api/cards')
-  } catch (err) {
-    error.value = err.message
-  }
-}
-
-function openNewCard() {
-  cardError.value = ''
-  cardForm.value = emptyCardForm()
-  cardEditorOpen.value = true
-}
-
-function openEditCard(card) {
-  cardError.value = ''
-  cardForm.value = {
-    id: card.id,
-    nombre: card.nombre,
-    color: card.color ?? '#2563eb',
-    activa: Number(card.activa) === 1,
-  }
-  cardEditorOpen.value = true
-}
-
-function closeCardEditor() {
-  if (cardSaving.value) return
-  cardEditorOpen.value = false
-  cardError.value = ''
-}
-
-async function saveCard() {
-  cardSaving.value = true
-  cardError.value = ''
-  notice.value = ''
-
-  const payload = {
-    nombre: cardForm.value.nombre,
-    color: cardForm.value.color,
-    activa: cardForm.value.activa,
-  }
-
-  try {
-    await fetchJson(cardForm.value.id ? `/api/cards/${cardForm.value.id}` : '/api/cards', {
-      method: cardForm.value.id ? 'PUT' : 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    cardEditorOpen.value = false
-    notice.value = cardForm.value.id ? 'Tarjeta actualizada.' : 'Tarjeta creada. Ya puedes asociarla a gastos fijos.'
-    await loadCards()
-  } catch (err) {
-    cardError.value = err.message
-  } finally {
-    cardSaving.value = false
-  }
-}
-
-async function deleteCard() {
-  if (!cardForm.value.id || !window.confirm('Eliminar esta tarjeta? Solo se puede si no tiene fijos asociados.')) return
-  cardSaving.value = true
-  cardError.value = ''
-  notice.value = ''
-
-  try {
-    await fetchJson(`/api/cards/${cardForm.value.id}`, { method: 'DELETE' })
-    cardEditorOpen.value = false
-    notice.value = 'Tarjeta eliminada.'
-    await loadCards()
-  } catch (err) {
-    cardError.value = err.message
-  } finally {
-    cardSaving.value = false
-  }
-}
-
-async function toggleCard(card) {
-  error.value = ''
-  notice.value = ''
-  try {
-    await fetchJson(`/api/cards/${card.id}`, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ activa: Number(card.activa) !== 1 }),
-    })
-    await loadCards()
-  } catch (err) {
-    error.value = err.message
-  }
-}
-
 function openNew(tipo) {
   editorError.value = ''
   form.value = emptyForm(tipo)
@@ -308,7 +204,6 @@ async function deleteCategory() {
 onMounted(() => {
   loadCategories()
   loadPlatforms()
-  loadCards()
 })
 </script>
 
@@ -358,39 +253,13 @@ onMounted(() => {
       </div>
     </section>
 
-    <section class="mt-6 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-      <div class="flex flex-col gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p class="text-sm font-semibold">Tarjetas</p>
-          <p class="text-xs text-zinc-500 dark:text-zinc-400">Solo nombres identificadores y color. No guardes números de tarjeta.</p>
-        </div>
-        <button type="button" class="h-9 rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white transition hover:bg-emerald-500" @click="openNewCard">Nueva tarjeta</button>
-      </div>
-      <div v-if="!cards.length" class="p-8 text-center text-sm text-zinc-400">No hay tarjetas configuradas.</div>
-      <div v-else class="divide-y divide-zinc-100 dark:divide-zinc-800">
-        <div v-for="card in cards" :key="card.id" class="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center">
-          <button type="button" class="flex flex-1 items-center gap-3 text-left" @click="openEditCard(card)">
-            <span class="h-3 w-3 rounded-full" :style="{ backgroundColor: card.color }" />
-            <span class="min-w-0">
-              <span class="block truncate text-sm font-medium" :class="Number(card.activa) === 1 ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-400 line-through dark:text-zinc-500'">{{ card.nombre }}</span>
-              <span class="block text-xs text-zinc-500 dark:text-zinc-400">{{ card.suscripciones ?? 0 }} fijos asociados</span>
-            </span>
-          </button>
-          <div class="flex items-center justify-between gap-3 sm:justify-end">
-            <span class="text-sm font-semibold tabular-nums text-zinc-900 dark:text-zinc-100">{{ formatCOP(card.total_mensual ?? 0) }}</span>
-            <button
-              type="button"
-              class="rounded-full px-3 py-1 text-xs font-medium transition"
-              :class="Number(card.activa) === 1 ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-400' : 'bg-zinc-100 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400'"
-              :title="Number(card.activa) === 1 ? 'Desactivar' : 'Reactivar'"
-              @click="toggleCard(card)"
-            >
-              {{ Number(card.activa) === 1 ? 'Activa' : 'Inactiva' }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </section>
+    <RouterLink to="/tarjetas" class="mt-6 flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-4 py-3 text-sm transition hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:bg-zinc-800/60">
+      <span>
+        <span class="font-semibold text-zinc-900 dark:text-zinc-100">Tarjetas y cuentas</span>
+        <span class="block text-xs text-zinc-500 dark:text-zinc-400">Se administran en su propia sección →</span>
+      </span>
+      <span class="text-zinc-400">→</span>
+    </RouterLink>
 
     <div class="mt-6 grid gap-6 lg:grid-cols-2">
       <section class="overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
@@ -458,47 +327,6 @@ onMounted(() => {
             <div class="flex gap-2">
               <button type="button" class="h-10 rounded-lg border border-zinc-200 px-4 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800" @click="closeEditor">Cancelar</button>
               <button type="submit" class="h-10 rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60" :disabled="saving">{{ saving ? 'Guardando…' : 'Guardar' }}</button>
-            </div>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <div v-if="cardEditorOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 px-4 backdrop-blur-sm" @click.self="closeCardEditor">
-      <div class="w-full max-w-lg rounded-lg border border-zinc-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
-        <div class="border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
-          <h2 class="text-base font-semibold text-zinc-900 dark:text-zinc-100">{{ cardForm.id ? 'Editar tarjeta' : 'Nueva tarjeta' }}</h2>
-        </div>
-
-        <form class="grid gap-4 p-5" @submit.prevent="saveCard">
-          <label class="grid gap-1 text-sm">
-            <span class="font-medium text-zinc-700 dark:text-zinc-300">Nombre identificador</span>
-            <input v-model="cardForm.nombre" type="text" placeholder="p. ej. Nu crédito, Bancolombia débito" class="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
-          </label>
-
-          <div class="grid gap-4 sm:grid-cols-2">
-            <label class="grid gap-1 text-sm">
-              <span class="font-medium text-zinc-700 dark:text-zinc-300">Color</span>
-              <input v-model="cardForm.color" type="color" class="h-10 rounded-lg border border-zinc-200 bg-white px-2 py-1 dark:border-zinc-700 dark:bg-zinc-950">
-            </label>
-            <label class="flex items-end gap-2 pb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              <input v-model="cardForm.activa" type="checkbox" class="h-4 w-4 accent-emerald-600">
-              Activa
-            </label>
-          </div>
-
-          <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
-            No escribas números de tarjeta, fechas de vencimiento ni datos sensibles. Usa solo un nombre para reconocerla.
-          </div>
-
-          <div v-if="cardError" class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300">{{ cardError }}</div>
-
-          <div class="flex justify-between gap-2 pt-2">
-            <button v-if="cardForm.id" type="button" class="h-10 rounded-lg border border-rose-200 px-4 text-sm font-medium text-rose-700 transition hover:bg-rose-50 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950" @click="deleteCard">Eliminar</button>
-            <span v-else />
-            <div class="flex gap-2">
-              <button type="button" class="h-10 rounded-lg border border-zinc-200 px-4 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800" @click="closeCardEditor">Cancelar</button>
-              <button type="submit" class="h-10 rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60" :disabled="cardSaving">{{ cardSaving ? 'Guardando…' : 'Guardar' }}</button>
             </div>
           </div>
         </form>

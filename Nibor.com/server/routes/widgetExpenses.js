@@ -149,6 +149,19 @@ const OUTGOING_AMOUNT_PATTERN = new RegExp(`\\b(?:${OUTGOING_MONEY_VERBS.join('|
 const INCOMING_AMOUNT_PATTERN = new RegExp(`\\b(?:${INCOMING_MONEY_VERBS.join('|')})\\b.*?${AMOUNT_TOKEN}`, 'i')
 const TRANSFER_TIMESTAMP_CUTOFF = /^(.*?a las\s+\d{1,2}:\d{2}\.?)/is
 
+// Los últimos 4 dígitos de "tu" tarjeta/cuenta (nunca la de destino de una
+// transferencia) para matchear contra Tarjetas y saber con qué se pagó.
+// Cubre "con tu T.Cred *9317", "con tu T.Deb *1234" y "desde tu cuenta 5702"
+// / "desde tu cuenta *5702" (con o sin asterisco, Bancolombia no es
+// consistente). No matchea "a la cuenta *3104772928" (cuenta destino de
+// otra persona) porque esa no lleva "tu" antes.
+const CARD_DIGITS_PATTERN = /(?:tu\s+cuenta|T\.?\s?Cred(?:ito)?|T\.?\s?Deb(?:ito)?)\s*\*?\s*(\d{4})\b/i
+
+function extractCardDigitsFromMensaje(mensaje) {
+  const match = mensaje.match(CARD_DIGITS_PATTERN)
+  return match ? match[1] : null
+}
+
 function parseAmountMatch(match) {
   if (!match) return null
   if (match[1] !== undefined) {
@@ -219,6 +232,8 @@ async function normalizeExpense(body, c) {
     descripcion = descripcionFromMensaje(mensaje)
   }
 
+  const cardDigits = mensaje ? extractCardDigitsFromMensaje(mensaje) : null
+
   const fecha = String(body.fecha ?? '').trim() || bogotaToday()
   let request_id = String(
     body.request_id
@@ -269,18 +284,20 @@ async function normalizeExpense(body, c) {
     }
   }
 
-  return { expense: { tipo, monto, descripcion, fecha, request_id } }
+  return { expense: { tipo, monto, descripcion, fecha, request_id, cardDigits } }
 }
 
 async function getExpenseByRequestId(db, requestId) {
   return first(
     db,
     `SELECT
-       m.id, m.fecha, m.tipo, m.categoria_id, m.descripcion, m.monto,
+       m.id, m.fecha, m.tipo, m.categoria_id, m.descripcion, m.monto, m.card_id,
        m.external_id AS request_id,
-       c.nombre AS categoria, c.icono AS categoria_icono
+       c.nombre AS categoria, c.icono AS categoria_icono,
+       t.nombre AS card_nombre, t.entidad AS card_entidad, t.ultimos_digitos AS card_ultimos_digitos, t.tipo AS card_tipo
      FROM movements m
      LEFT JOIN categories c ON c.id = m.categoria_id
+     LEFT JOIN cards t ON t.id = m.card_id
      WHERE m.external_source = ? AND m.external_id = ?`,
     EXTERNAL_SOURCE,
     requestId,
@@ -291,14 +308,29 @@ async function getExpenseById(db, id) {
   return first(
     db,
     `SELECT
-       m.id, m.fecha, m.tipo, m.categoria_id, m.descripcion, m.monto,
+       m.id, m.fecha, m.tipo, m.categoria_id, m.descripcion, m.monto, m.card_id,
        m.external_id AS request_id,
-       c.nombre AS categoria, c.icono AS categoria_icono
+       c.nombre AS categoria, c.icono AS categoria_icono,
+       t.nombre AS card_nombre, t.entidad AS card_entidad, t.ultimos_digitos AS card_ultimos_digitos, t.tipo AS card_tipo
      FROM movements m
      LEFT JOIN categories c ON c.id = m.categoria_id
+     LEFT JOIN cards t ON t.id = m.card_id
      WHERE m.id = ?`,
     id,
   )
+}
+
+// Solo una tarjeta/cuenta activa con esos últimos 4 dígitos: si hay 0 o más
+// de una (coincidencia entre dos tarjetas), no se adivina — el gasto se
+// registra igual, simplemente sin tarjeta vinculada.
+async function resolveCardFromDigits(db, digits) {
+  if (!digits) return null
+  const matches = await all(
+    db,
+    `SELECT id, nombre, entidad, ultimos_digitos, tipo FROM cards WHERE activa = 1 AND ultimos_digitos = ?`,
+    digits,
+  )
+  return matches.length === 1 ? matches[0] : null
 }
 
 function matchesExisting(existing, expense, categoryId) {
@@ -307,6 +339,13 @@ function matchesExisting(existing, expense, categoryId) {
     && existing.categoria_id === categoryId
     && existing.descripcion === expense.descripcion
     && Math.abs(Number(existing.monto) - expense.monto) < 0.000001
+}
+
+function cardLabel(movement) {
+  if (!movement.card_nombre) return ''
+  const icon = movement.card_tipo === 'cuenta' ? '🏦' : '💳'
+  const digits = movement.card_ultimos_digitos ? ` *${movement.card_ultimos_digitos}` : ''
+  return ` · ${icon} ${movement.card_nombre}${digits}`
 }
 
 function successResult(movement, duplicate, dbMs) {
@@ -318,7 +357,7 @@ function successResult(movement, duplicate, dbMs) {
     payload: {
       success: true,
       data: {
-        text: `✅ ${label} registrado${duplicateText}: ${copFormatter.format(Number(movement.monto))} · ${movement.descripcion} · ${icon}${movement.categoria}`,
+        text: `✅ ${label} registrado${duplicateText}: ${copFormatter.format(Number(movement.monto))} · ${movement.descripcion} · ${icon}${movement.categoria}${cardLabel(movement)}`,
         duplicado: duplicate,
         movimiento: movement,
       },
@@ -399,6 +438,24 @@ widgetExpenses.post('/', (c) => guarded(c, '/api/widget/expenses', async () => {
 
   const expense = normalized.expense
   const category = categoryResult.category
+
+  // Tarjeta/cuenta: si el body manda card_id explícito se respeta (aunque no
+  // exista, simplemente no queda ninguna vinculada); si no, se intenta
+  // detectar por los últimos 4 dígitos del mensaje.
+  let card = null
+  if (body.card_id !== undefined && body.card_id !== null && body.card_id !== '') {
+    const cardId = toInteger(body.card_id)
+    if (Number.isInteger(cardId)) {
+      card = await withDbTimeout(
+        first(c.env.DB, 'SELECT id, nombre, entidad, ultimos_digitos, tipo FROM cards WHERE id = ?', cardId),
+        'buscarTarjetaExplicita',
+      )
+    }
+  } else if (expense.cardDigits) {
+    card = await withDbTimeout(resolveCardFromDigits(c.env.DB, expense.cardDigits), 'buscarTarjetaPorDigitos')
+  }
+  const cardId = card?.id ?? null
+
   let existing = await withDbTimeout(
     getExpenseByRequestId(c.env.DB, expense.request_id),
     'buscarGastoIdempotente',
@@ -421,15 +478,16 @@ widgetExpenses.post('/', (c) => guarded(c, '/api/widget/expenses', async () => {
       run(
         c.env.DB,
         `INSERT INTO movements (
-           fecha, tipo, categoria_id, descripcion, monto, subscription_id,
+           fecha, tipo, categoria_id, descripcion, monto, subscription_id, card_id,
            external_source, external_id
          )
-         VALUES (?, ?, ?, ?, ?, NULL, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
         expense.fecha,
         expense.tipo,
         category.id,
         expense.descripcion,
         expense.monto,
+        cardId,
         EXTERNAL_SOURCE,
         expense.request_id,
       ),
