@@ -1,8 +1,13 @@
 <script setup>
-import { onMounted, ref } from 'vue'
-import { formatCOP } from '../utils/format.js'
+import { computed, onMounted, ref } from 'vue'
+import { formatCOP, formatDate, monthName } from '../utils/format.js'
 
+const now = new Date()
+const selectedYear = ref(now.getFullYear())
+const selectedMonth = ref(now.getMonth() + 1)
 const cards = ref([])
+const movements = ref([])
+const expandedCardId = ref(null)
 const loading = ref(false)
 const error = ref('')
 const notice = ref('')
@@ -10,6 +15,34 @@ const editorOpen = ref(false)
 const editorError = ref('')
 const saving = ref(false)
 const form = ref(emptyForm())
+
+const monthLabel = computed(() => monthName(selectedMonth.value, selectedYear.value))
+// Solo gastos (no ingresos) por tarjeta/cuenta, para el mes seleccionado —
+// es lo que la tarjeta realmente "gastó", aparte de los fijos recurrentes.
+const expensesByCard = computed(() => {
+  const map = new Map()
+  for (const movement of movements.value) {
+    if (movement.tipo !== 'gasto' || movement.card_id === null || movement.card_id === undefined) continue
+    const cardId = Number(movement.card_id)
+    if (!map.has(cardId)) map.set(cardId, { total: 0, items: [] })
+    const entry = map.get(cardId)
+    entry.total += Number(movement.monto ?? 0)
+    entry.items.push(movement)
+  }
+  return map
+})
+
+function cardExpenses(cardId) {
+  return expensesByCard.value.get(Number(cardId))?.items ?? []
+}
+
+function cardExpensesTotal(cardId) {
+  return expensesByCard.value.get(Number(cardId))?.total ?? 0
+}
+
+function toggleExpand(cardId) {
+  expandedCardId.value = expandedCardId.value === cardId ? null : cardId
+}
 
 const TIPOS = [
   { value: 'credito', label: 'Tarjeta de crédito' },
@@ -55,6 +88,27 @@ async function loadCards() {
   } finally {
     loading.value = false
   }
+}
+
+async function loadMovements() {
+  try {
+    movements.value = await fetchJson(`/api/movements?anio=${selectedYear.value}&mes=${selectedMonth.value}`)
+  } catch (err) {
+    error.value = err.message
+  }
+}
+
+function shiftMonth(delta) {
+  const date = new Date(selectedYear.value, selectedMonth.value - 1 + delta, 1)
+  selectedYear.value = date.getFullYear()
+  selectedMonth.value = date.getMonth() + 1
+  loadMovements()
+}
+
+function setCurrentMonth() {
+  selectedYear.value = now.getFullYear()
+  selectedMonth.value = now.getMonth() + 1
+  loadMovements()
 }
 
 function openNew() {
@@ -148,7 +202,10 @@ async function toggleCard(card) {
   }
 }
 
-onMounted(loadCards)
+onMounted(() => {
+  loadCards()
+  loadMovements()
+})
 </script>
 
 <template>
@@ -168,38 +225,71 @@ onMounted(loadCards)
     <div v-if="error" class="mt-6 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300">{{ error }}</div>
     <div v-if="notice" class="mt-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300">{{ notice }}</div>
 
-    <section class="mt-6 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+    <div class="mt-6 flex flex-wrap items-center gap-2">
+      <button type="button" class="h-10 w-10 rounded-lg border border-zinc-200 text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800" title="Mes anterior" @click="shiftMonth(-1)">‹</button>
+      <div class="flex h-10 min-w-40 items-center justify-center rounded-lg border border-zinc-200 bg-white px-4 text-sm font-semibold dark:border-zinc-800 dark:bg-zinc-900">
+        {{ monthLabel }}
+      </div>
+      <button type="button" class="h-10 w-10 rounded-lg border border-zinc-200 text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800" title="Mes siguiente" @click="shiftMonth(1)">›</button>
+      <button type="button" class="h-10 rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white transition hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-white" @click="setCurrentMonth">Actual</button>
+      <span class="text-xs text-zinc-400 dark:text-zinc-500">Los montos y gastos de abajo son de {{ monthLabel }}.</span>
+    </div>
+
+    <section class="mt-3 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
       <div v-if="loading" class="p-8 text-center text-sm text-zinc-400">Cargando…</div>
       <div v-else-if="!cards.length" class="p-8 text-center text-sm text-zinc-400">Aún no has agregado ninguna tarjeta o cuenta.</div>
       <div v-else class="divide-y divide-zinc-100 dark:divide-zinc-800">
-        <div v-for="card in cards" :key="card.id" class="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center">
-          <button type="button" class="flex flex-1 items-center gap-3 text-left" @click="openEdit(card)">
-            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-base" :style="{ backgroundColor: `${card.color}22` }">{{ tipoIcon(card.tipo) }}</span>
-            <span class="min-w-0">
-              <span class="flex flex-wrap items-center gap-2">
-                <span class="truncate text-sm font-medium" :class="Number(card.activa) === 1 ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-400 line-through dark:text-zinc-500'">{{ card.nombre }}</span>
-                <span class="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">{{ tipoLabel(card.tipo) }}</span>
+        <div v-for="card in cards" :key="card.id">
+          <div class="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center">
+            <button type="button" class="flex flex-1 items-center gap-3 text-left" @click="openEdit(card)">
+              <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-base" :style="{ backgroundColor: `${card.color}22` }">{{ tipoIcon(card.tipo) }}</span>
+              <span class="min-w-0">
+                <span class="flex flex-wrap items-center gap-2">
+                  <span class="truncate text-sm font-medium" :class="Number(card.activa) === 1 ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-400 line-through dark:text-zinc-500'">{{ card.nombre }}</span>
+                  <span class="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">{{ tipoLabel(card.tipo) }}</span>
+                </span>
+                <span class="block text-xs text-zinc-500 dark:text-zinc-400">
+                  <template v-if="card.entidad">{{ card.entidad }} · </template>
+                  <template v-if="card.ultimos_digitos">•••• {{ card.ultimos_digitos }}</template>
+                  <template v-else>sin últimos dígitos — no se detectará sola</template>
+                  <template v-if="card.tipo === 'credito' && card.cupo"> · cupo {{ formatCOP(card.cupo) }}</template>
+                </span>
+                <span class="block text-xs text-zinc-400 dark:text-zinc-500">{{ card.suscripciones ?? 0 }} fijos asociados · {{ formatCOP(card.total_mensual ?? 0) }}/mes en fijos</span>
               </span>
-              <span class="block text-xs text-zinc-500 dark:text-zinc-400">
-                <template v-if="card.entidad">{{ card.entidad }} · </template>
-                <template v-if="card.ultimos_digitos">•••• {{ card.ultimos_digitos }}</template>
-                <template v-else>sin últimos dígitos — no se detectará sola</template>
-                <template v-if="card.tipo === 'credito' && card.cupo"> · cupo {{ formatCOP(card.cupo) }}</template>
-              </span>
-              <span class="block text-xs text-zinc-400 dark:text-zinc-500">{{ card.suscripciones ?? 0 }} fijos asociados</span>
-            </span>
-          </button>
-          <div class="flex items-center justify-between gap-3 sm:justify-end">
-            <span class="text-sm font-semibold tabular-nums text-zinc-900 dark:text-zinc-100">{{ formatCOP(card.total_mensual ?? 0) }}/mes</span>
+            </button>
             <button
               type="button"
-              class="rounded-full px-3 py-1 text-xs font-medium transition"
+              class="flex items-center gap-3 rounded-lg px-2 py-1 text-left transition hover:bg-zinc-50 sm:justify-end dark:hover:bg-zinc-800/60"
+              :title="cardExpenses(card.id).length ? `Ver gastos de ${monthLabel}` : `Sin gastos capturados en ${monthLabel}`"
+              @click="toggleExpand(card.id)"
+            >
+              <span class="text-sm font-semibold tabular-nums text-rose-700 dark:text-rose-400">{{ formatCOP(cardExpensesTotal(card.id)) }}</span>
+              <span class="text-xs text-zinc-400">{{ cardExpenses(card.id).length }} gasto{{ cardExpenses(card.id).length === 1 ? '' : 's' }}</span>
+              <span class="text-zinc-400 transition-transform" :class="expandedCardId === card.id ? 'rotate-180' : ''">▾</span>
+            </button>
+            <button
+              type="button"
+              class="shrink-0 rounded-full px-3 py-1 text-xs font-medium transition"
               :class="Number(card.activa) === 1 ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-400' : 'bg-zinc-100 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400'"
               :title="Number(card.activa) === 1 ? 'Desactivar' : 'Reactivar'"
               @click="toggleCard(card)"
             >
               {{ Number(card.activa) === 1 ? 'Activa' : 'Inactiva' }}
             </button>
+          </div>
+
+          <div v-if="expandedCardId === card.id" class="border-t border-zinc-100 bg-zinc-50 px-4 py-2 dark:border-zinc-800 dark:bg-zinc-950/50">
+            <div v-if="!cardExpenses(card.id).length" class="py-3 text-center text-xs text-zinc-400">Sin gastos con esta tarjeta/cuenta en {{ monthLabel }}.</div>
+            <div v-else class="divide-y divide-zinc-100 dark:divide-zinc-800">
+              <div v-for="movement in cardExpenses(card.id)" :key="movement.id" class="grid grid-cols-[auto_1fr_auto] items-center gap-3 py-2">
+                <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-sm dark:bg-zinc-900">{{ movement.categoria_icono ?? '·' }}</span>
+                <span class="min-w-0">
+                  <span class="block truncate text-sm text-zinc-800 dark:text-zinc-200">{{ movement.descripcion || movement.categoria_nombre || 'Sin descripción' }}</span>
+                  <span class="block text-xs text-zinc-500 dark:text-zinc-400">{{ formatDate(movement.fecha) }} · {{ movement.categoria_nombre ?? 'Sin categoría' }}</span>
+                </span>
+                <span class="text-sm font-semibold tabular-nums text-rose-700 dark:text-rose-400">{{ formatCOP(movement.monto) }}</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
