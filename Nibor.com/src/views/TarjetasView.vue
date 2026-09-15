@@ -7,7 +7,7 @@ const selectedYear = ref(now.getFullYear())
 const selectedMonth = ref(now.getMonth() + 1)
 const cards = ref([])
 const movements = ref([])
-const expandedCardId = ref(null)
+const cardFilter = ref('')
 const loading = ref(false)
 const error = ref('')
 const notice = ref('')
@@ -32,16 +32,25 @@ const expensesByCard = computed(() => {
   return map
 })
 
-function cardExpenses(cardId) {
-  return expensesByCard.value.get(Number(cardId))?.items ?? []
-}
-
 function cardExpensesTotal(cardId) {
   return expensesByCard.value.get(Number(cardId))?.total ?? 0
 }
 
-function toggleExpand(cardId) {
-  expandedCardId.value = expandedCardId.value === cardId ? null : cardId
+// Historial filtrable de abajo: todos los gastos del mes, o solo los de la
+// tarjeta/cuenta elegida en el <select>.
+const filteredMovements = computed(() => {
+  return movements.value.filter((movement) => {
+    if (movement.tipo !== 'gasto') return false
+    if (cardFilter.value === '') return true
+    return Number(movement.card_id) === Number(cardFilter.value)
+  })
+})
+
+const filteredTotal = computed(() => filteredMovements.value.reduce((sum, m) => sum + Number(m.monto ?? 0), 0))
+
+function selectCardFilter(cardId) {
+  cardFilter.value = cardFilter.value === cardId ? '' : cardId
+  document.getElementById('historial-gastos')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 const TIPOS = [
@@ -259,13 +268,13 @@ onMounted(() => {
             </button>
             <button
               type="button"
-              class="flex items-center gap-3 rounded-lg px-2 py-1 text-left transition hover:bg-zinc-50 sm:justify-end dark:hover:bg-zinc-800/60"
-              :title="cardExpenses(card.id).length ? `Ver gastos de ${monthLabel}` : `Sin gastos capturados en ${monthLabel}`"
-              @click="toggleExpand(card.id)"
+              class="flex items-center gap-2 rounded-lg px-2 py-1 text-left transition hover:bg-zinc-50 sm:justify-end dark:hover:bg-zinc-800/60"
+              :class="cardFilter === card.id ? 'ring-1 ring-emerald-500' : ''"
+              title="Ver en el historial de abajo"
+              @click="selectCardFilter(card.id)"
             >
               <span class="text-sm font-semibold tabular-nums text-rose-700 dark:text-rose-400">{{ formatCOP(cardExpensesTotal(card.id)) }}</span>
-              <span class="text-xs text-zinc-400">{{ cardExpenses(card.id).length }} gasto{{ cardExpenses(card.id).length === 1 ? '' : 's' }}</span>
-              <span class="text-zinc-400 transition-transform" :class="expandedCardId === card.id ? 'rotate-180' : ''">▾</span>
+              <span class="text-xs text-zinc-400">gastado en {{ monthLabel }}</span>
             </button>
             <button
               type="button"
@@ -277,20 +286,38 @@ onMounted(() => {
               {{ Number(card.activa) === 1 ? 'Activa' : 'Inactiva' }}
             </button>
           </div>
+        </div>
+      </div>
+    </section>
 
-          <div v-if="expandedCardId === card.id" class="border-t border-zinc-100 bg-zinc-50 px-4 py-2 dark:border-zinc-800 dark:bg-zinc-950/50">
-            <div v-if="!cardExpenses(card.id).length" class="py-3 text-center text-xs text-zinc-400">Sin gastos con esta tarjeta/cuenta en {{ monthLabel }}.</div>
-            <div v-else class="divide-y divide-zinc-100 dark:divide-zinc-800">
-              <div v-for="movement in cardExpenses(card.id)" :key="movement.id" class="grid grid-cols-[auto_1fr_auto] items-center gap-3 py-2">
-                <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-sm dark:bg-zinc-900">{{ movement.categoria_icono ?? '·' }}</span>
-                <span class="min-w-0">
-                  <span class="block truncate text-sm text-zinc-800 dark:text-zinc-200">{{ movement.descripcion || movement.categoria_nombre || 'Sin descripción' }}</span>
-                  <span class="block text-xs text-zinc-500 dark:text-zinc-400">{{ formatDate(movement.fecha) }} · {{ movement.categoria_nombre ?? 'Sin categoría' }}</span>
-                </span>
-                <span class="text-sm font-semibold tabular-nums text-rose-700 dark:text-rose-400">{{ formatCOP(movement.monto) }}</span>
-              </div>
-            </div>
-          </div>
+    <section id="historial-gastos" class="mt-3 scroll-mt-4 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 px-4 py-3 dark:border-zinc-800">
+        <div>
+          <h2 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Historial de gastos</h2>
+          <p class="text-xs text-zinc-500 dark:text-zinc-400">{{ monthLabel }}</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <select v-model="cardFilter" class="h-9 rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
+            <option value="">Todas las tarjetas</option>
+            <option v-for="card in cards" :key="card.id" :value="card.id">
+              {{ card.tipo === 'cuenta' ? '🏦' : '💳' }} {{ card.nombre }}
+            </option>
+          </select>
+          <span class="text-sm font-semibold tabular-nums text-rose-700 dark:text-rose-400">{{ formatCOP(filteredTotal) }}</span>
+        </div>
+      </div>
+      <div v-if="!filteredMovements.length" class="p-8 text-center text-sm text-zinc-400">Sin gastos en {{ monthLabel }}.</div>
+      <div v-else class="divide-y divide-zinc-100 dark:divide-zinc-800">
+        <div v-for="movement in filteredMovements" :key="movement.id" class="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-3">
+          <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-50 text-sm dark:bg-zinc-800">{{ movement.categoria_icono ?? '·' }}</span>
+          <span class="min-w-0">
+            <span class="block truncate text-sm text-zinc-800 dark:text-zinc-200">{{ movement.descripcion || movement.categoria_nombre || 'Sin descripción' }}</span>
+            <span class="block text-xs text-zinc-500 dark:text-zinc-400">
+              {{ formatDate(movement.fecha) }} · {{ movement.categoria_nombre ?? 'Sin categoría' }}
+              <template v-if="movement.card_nombre"> · {{ movement.card_ultimos_digitos ? '💳' : '' }} {{ movement.card_nombre }}{{ movement.card_ultimos_digitos ? ` *${movement.card_ultimos_digitos}` : '' }}</template>
+            </span>
+          </span>
+          <span class="text-sm font-semibold tabular-nums text-rose-700 dark:text-rose-400">{{ formatCOP(movement.monto) }}</span>
         </div>
       </div>
     </section>
