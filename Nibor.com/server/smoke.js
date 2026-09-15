@@ -289,6 +289,16 @@ async function run() {
   })
   if (accountCard.tipo !== 'cuenta') throw new Error('No se creo la cuenta smoke')
 
+  const nuCard = await post('/cards', {
+    nombre: 'Smoke Nu credito',
+    color: '#c026d3',
+    activa: true,
+    tipo: 'credito',
+    entidad: 'Nu',
+    ultimos_digitos: '1364',
+  })
+  if (!nuCard.id || nuCard.entidad !== 'Nu') throw new Error(`No se creo tarjeta Nu smoke: ${JSON.stringify(nuCard)}`)
+
   const subscription = await post('/subscriptions', {
     nombre: `Smoke suscripcion ${Date.now()}`,
     monto: 99,
@@ -1469,6 +1479,46 @@ async function run() {
     || !String(widgetIncomeFromMessage.text ?? '').startsWith('✅ Ingreso registrado')
   ) {
     throw new Error(`Widget de gastos no detecto un ingreso desde el mensaje: ${JSON.stringify(widgetIncomeFromMessage)}`)
+  }
+
+  // Nu manda frases y formato de monto distintos a Bancolombia ("Compra
+  // aprobada por" en vez de "Compraste", "$81.985,00" con punto de miles
+  // igual que COP pero con signo "$"): esto prueba que la deteccion es
+  // agnostica del banco, no solo de Bancolombia.
+  const widgetExpenseFromNuPurchaseMessage = await post('/widget/expenses?token=smoke-expenses-token', {
+    mensaje: 'Compra aprobada por $81.985,00En CARULLA FRESH CENTRO C por $81.985,00 con tu tarjeta 1364. Nu Plus: +20 puntos.',
+    categoria_id: expenseCategory.id,
+    request_id: `${widgetExpenseRequestId}-mensaje-nu-compra`,
+    fecha: `${smokeYear}-04-19`,
+  })
+  if (
+    widgetExpenseFromNuPurchaseMessage.movimiento?.tipo !== 'gasto'
+    || widgetExpenseFromNuPurchaseMessage.movimiento?.monto !== 81985
+  ) {
+    throw new Error(`Widget de gastos no detecto monto de mensaje de compra Nu: ${JSON.stringify(widgetExpenseFromNuPurchaseMessage)}`)
+  }
+  if (
+    widgetExpenseFromNuPurchaseMessage.movimiento?.card_id !== nuCard.id
+    || !String(widgetExpenseFromNuPurchaseMessage.text ?? '').includes('*1364')
+  ) {
+    throw new Error(`Widget de gastos no vinculo la tarjeta Nu *1364 detectada en el mensaje: ${JSON.stringify(widgetExpenseFromNuPurchaseMessage)}`)
+  }
+
+  // El mensaje de "recibiste" de Nu no trae ningun digito de la cuenta
+  // propia (a diferencia de Bancolombia) — no debe adivinar ninguna tarjeta.
+  const widgetIncomeFromNuMessage = await post('/widget/expenses?token=smoke-expenses-token', {
+    mensaje: 'Recibiste 100,00 en tu cuentaTe llego dinero de JOSE NICOLAS BORJA ARRIAGA con tu llave.',
+    categoria_id: expenseCategory.id,
+    request_id: `${widgetExpenseRequestId}-mensaje-nu-ingreso`,
+    fecha: `${smokeYear}-04-19`,
+  })
+  if (
+    widgetIncomeFromNuMessage.movimiento?.tipo !== 'ingreso'
+    || widgetIncomeFromNuMessage.movimiento?.monto !== 100
+    || widgetIncomeFromNuMessage.movimiento?.categoria !== 'Otros ingresos'
+    || widgetIncomeFromNuMessage.movimiento?.card_id !== null
+  ) {
+    throw new Error(`Widget de gastos no detecto bien el ingreso Nu sin tarjeta: ${JSON.stringify(widgetIncomeFromNuMessage)}`)
   }
 
   const autoIdMensaje = `Bancolombia: Transferiste $32,000.00 desde tu cuenta 5702 a la cuenta *9988776655 el 12/08/2026 a las 20:${notificationSmokeRunId.toString().padStart(2, '0').slice(-2)}. ¿Dudas? Llamanos al 018000931987. Estamos cerca.`

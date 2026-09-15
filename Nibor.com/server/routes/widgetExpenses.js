@@ -128,51 +128,71 @@ async function resolveDefaultIncomeCategory(db) {
 // movimiento para una compra rechazada, sin importar qué diga el mensaje.
 const DECLINED_PURCHASE_PATTERN = /no fue exitosa|no se afect[oó]|transacci[oó]n rechazada|compra rechazada/i
 
-// Notificaciones de Bancolombia de dinero que SALE de la cuenta ("gasto") o
-// que ENTRA ("ingreso"). El monto aparece como "<verbo> $<monto>" o
-// "<verbo> COP<monto>". Agregar un verbo nuevo es agregar una palabra a la
-// lista correspondiente; nunca mezclar un verbo entrante en la lista de
-// salientes ni viceversa, porque de eso depende si se crea un gasto o un
-// ingreso. Para la descripción se usa el mensaje completo (no solo el
-// destinatario) porque el formato varía entre plantillas (cuenta directa,
-// llave Bre-B con nombre, QR, pago recibido) y el texto completo nunca deja
-// afuera información útil; solo se recorta el relleno de "¿Dudas?
-// Llamanos..." al final, quedándose con todo hasta la hora.
-const OUTGOING_MONEY_VERBS = ['transferiste', 'pagaste', 'retiraste', 'compraste']
+// Notificaciones de dinero que SALE de la cuenta ("gasto") o que ENTRA
+// ("ingreso"). Cubre tanto Bancolombia ("Compraste COP654.139,00...",
+// "Transferiste $7,700.00...") como Nu ("Compra aprobada por $81.985,00",
+// "Recibiste 100,00 en tu cuenta"), sin necesitar saber cuál banco mandó el
+// mensaje — ambos "siempre dicen de dónde viene la plata", solo que con
+// palabras y formato de monto distintos. Agregar un banco nuevo es agregar
+// su frase a la lista correspondiente; nunca mezclar un verbo entrante en la
+// lista de salientes ni viceversa, porque de eso depende si se crea un gasto
+// o un ingreso. Para la descripción se usa el mensaje completo (no solo el
+// destinatario) porque el formato varía entre plantillas y el texto completo
+// nunca deja afuera información útil; solo se recorta el relleno de "¿Dudas?
+// Llamanos..." al final (si existe), quedándose con todo hasta la hora.
+const OUTGOING_MONEY_VERBS = ['transferiste', 'pagaste', 'retiraste', 'compraste', 'compra\\s+aprobada']
 const INCOMING_MONEY_VERBS = ['recibiste']
-// Dos formatos de monto en los mensajes de Bancolombia: transferencias/QR/
-// pagos recibidos usan "$20,000.00" (coma miles, punto decimal); compras con
-// tarjeta usan "COP654.139,00" (punto miles, coma decimal — formato
-// colombiano estándar).
-const AMOUNT_TOKEN = '(?:\\$\\s*([\\d]{1,3}(?:,\\d{3})*(?:\\.\\d{1,2})?)|COP\\s*([\\d]{1,3}(?:\\.\\d{3})*(?:,\\d{1,2})?))'
-const OUTGOING_AMOUNT_PATTERN = new RegExp(`\\b(?:${OUTGOING_MONEY_VERBS.join('|')})\\b.*?${AMOUNT_TOKEN}`, 'i')
-const INCOMING_AMOUNT_PATTERN = new RegExp(`\\b(?:${INCOMING_MONEY_VERBS.join('|')})\\b.*?${AMOUNT_TOKEN}`, 'i')
+// El monto puede venir con "$" (Bancolombia: "$2,500.00", coma miles/punto
+// decimal; Nu: "$81.985,00", punto miles/coma decimal), con "COP" (Bancolombia
+// "COP654.139,00") o sin ningún signo (Nu: "Recibiste 100,00 en tu cuenta").
+// No se puede asumir el separador de miles/decimal por el signo porque
+// Bancolombia y Nu lo usan al revés uno del otro — se interpreta el número
+// completo con parseColombianAmount() en vez de fijarlo aquí.
+const AMOUNT_TOKEN = '(?:\\$|COP)?\\s*([\\d]{1,3}(?:[.,]\\d{3})*(?:[.,]\\d{1,2})?)'
+const OUTGOING_AMOUNT_PATTERN = new RegExp(`\\b(?:${OUTGOING_MONEY_VERBS.join('|')})\\b.*?${AMOUNT_TOKEN}`, 'is')
+const INCOMING_AMOUNT_PATTERN = new RegExp(`\\b(?:${INCOMING_MONEY_VERBS.join('|')})\\b.*?${AMOUNT_TOKEN}`, 'is')
 const TRANSFER_TIMESTAMP_CUTOFF = /^(.*?a las\s+\d{1,2}:\d{2}\.?)/is
 
 // Los últimos 4 dígitos de "tu" tarjeta/cuenta (nunca la de destino de una
 // transferencia) para matchear contra Tarjetas y saber con qué se pagó.
-// Cubre "con tu T.Cred *9317", "con tu T.Deb *1234" y "desde tu cuenta 5702"
-// / "desde tu cuenta *5702" (con o sin asterisco, Bancolombia no es
-// consistente). No matchea "a la cuenta *3104772928" (cuenta destino de
-// otra persona) porque esa no lleva "tu" antes.
-const CARD_DIGITS_PATTERN = /(?:tu\s+cuenta|T\.?\s?Cred(?:ito)?|T\.?\s?Deb(?:ito)?)\s*\*?\s*(\d{4})\b/i
+// Cubre "con tu T.Cred *9317", "con tu T.Deb *1234", "desde tu cuenta 5702"
+// / "desde tu cuenta *5702" (Bancolombia, con o sin asterisco) y "con tu
+// tarjeta 1364" (Nu, sin asterisco ni abreviatura). No matchea "a la cuenta
+// *3104772928" (cuenta destino de otra persona) porque esa no lleva "tu"
+// antes. Los mensajes de Nu por llave/QR recibidos no traen ningún dígito
+// de la cuenta propia — en ese caso simplemente no hay tarjeta que vincular.
+const CARD_DIGITS_PATTERN = /(?:tu\s+cuenta|tu\s+tarjeta|T\.?\s?Cred(?:ito)?|T\.?\s?Deb(?:ito)?)\s*\*?\s*(\d{4})\b/i
 
 function extractCardDigitsFromMensaje(mensaje) {
   const match = mensaje.match(CARD_DIGITS_PATTERN)
   return match ? match[1] : null
 }
 
+// Interpreta un monto colombiano sin asumir de antemano cuál signo (",", ".")
+// es el separador decimal: el que aparece último y tiene 1-2 dígitos después
+// es el decimal; el otro (si aparece) es el separador de miles. Cubre
+// "654.139,00" (Bancolombia COP), "2,500.00" (Bancolombia $), "81.985,00"
+// (Nu $) y "100,00" (Nu sin signo) con la misma lógica.
+function parseColombianAmount(raw) {
+  if (!raw) return null
+  const str = raw.trim()
+  const lastComma = str.lastIndexOf(',')
+  const lastDot = str.lastIndexOf('.')
+  let normalized
+  if (lastComma === -1 && lastDot === -1) {
+    normalized = str
+  } else if (lastComma > lastDot) {
+    normalized = str.replace(/\./g, '').replace(',', '.')
+  } else {
+    normalized = str.replace(/,/g, '')
+  }
+  const value = Number(normalized)
+  return Number.isFinite(value) ? value : null
+}
+
 function parseAmountMatch(match) {
   if (!match) return null
-  if (match[1] !== undefined) {
-    const value = Number(match[1].replace(/,/g, ''))
-    return Number.isFinite(value) ? value : null
-  }
-  if (match[2] !== undefined) {
-    const value = Number(match[2].replace(/\./g, '').replace(',', '.'))
-    return Number.isFinite(value) ? value : null
-  }
-  return null
+  return parseColombianAmount(match[1])
 }
 
 // Detecta si el mensaje describe dinero saliente o entrante y extrae el
@@ -247,9 +267,11 @@ async function normalizeExpense(body, c) {
   }
 
   if (!Number.isFinite(monto) || monto <= 0) {
+    const outgoingDisplay = OUTGOING_MONEY_VERBS.map((v) => v.replace(/\\s\+/g, ' ')).join(', ')
+    const incomingDisplay = INCOMING_MONEY_VERBS.map((v) => v.replace(/\\s\+/g, ' ')).join(', ')
     return {
       error: mensaje
-        ? `No se pudo detectar el monto en el mensaje (se esperaba un verbo de dinero saliente — ${OUTGOING_MONEY_VERBS.join(', ')} — o entrante — ${INCOMING_MONEY_VERBS.join(', ')} — seguido de "$monto" o "COP<monto>"). Mensaje recibido: ${describeReceived(mensaje, 300)}`
+        ? `No se pudo detectar el monto en el mensaje (se esperaba una frase de dinero saliente — ${outgoingDisplay} — o entrante — ${incomingDisplay} — seguida de un monto, con o sin "$"/"COP"). Mensaje recibido: ${describeReceived(mensaje, 300)}`
         : `El monto debe ser mayor a 0. Valor de "monto" recibido: ${describeReceived(body.monto)}`,
       status: 400,
       code: 'BAD_REQUEST',
