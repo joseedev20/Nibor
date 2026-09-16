@@ -86,38 +86,48 @@ async function resolveExpenseCategory(db, body, tipo = 'gasto') {
   return { category: matches[0] }
 }
 
-// Categoría fija para ingresos detectados por mensaje ("recibiste un pago").
-// Se ignora a propósito cualquier `categoria`/`categoria_id` que mande el
-// body: el Atajo del usuario manda un valor fijo pensado para gastos (ej.
-// "Transferencias"), que no existe como categoría de ingreso — usar ese
-// valor causaría un 404 en vez de registrar el ingreso. Así no hace falta
-// tocar el Atajo para que los ingresos también se registren solos.
+// Categorías fijas cuando el gasto/ingreso se detectó por mensaje y el Atajo
+// no mandó `categoria`/`categoria_id` (o mandó una que no aplica a ese tipo,
+// como una categoría de gasto en un mensaje que resultó ser un ingreso). Así
+// el Atajo puede quedar en un solo paso — capturar y guardar — sin tener que
+// elegir categoría en Shortcuts cada vez; se reclasifica después desde la
+// app si hace falta.
 const DEFAULT_INCOME_CATEGORY_NAME = 'Otros ingresos'
+const DEFAULT_EXPENSE_CATEGORY_NAME = 'Otros gastos'
 
-async function resolveDefaultIncomeCategory(db) {
+async function resolveDefaultCategory(db, tipo, name) {
   const matches = await all(
     db,
     `SELECT id, nombre, icono, color
      FROM categories
-     WHERE tipo = 'ingreso' AND LOWER(nombre) = LOWER(?)
+     WHERE tipo = ? AND LOWER(nombre) = LOWER(?)
      ORDER BY id ASC`,
-    DEFAULT_INCOME_CATEGORY_NAME,
+    tipo,
+    name,
   )
   if (!matches.length) {
     return {
-      error: `Categoría de ingreso por defecto no encontrada: "${DEFAULT_INCOME_CATEGORY_NAME}". Créala en Configuración.`,
+      error: `Categoría de ${tipo} por defecto no encontrada: "${name}". Créala en Configuración.`,
       status: 404,
       code: 'CATEGORY_NOT_FOUND',
     }
   }
   if (matches.length > 1) {
     return {
-      error: `Hay varias categorías llamadas "${DEFAULT_INCOME_CATEGORY_NAME}"; deja solo una en Configuración`,
+      error: `Hay varias categorías llamadas "${name}"; deja solo una en Configuración`,
       status: 409,
       code: 'AMBIGUOUS_CATEGORY',
     }
   }
   return { category: matches[0] }
+}
+
+function resolveDefaultIncomeCategory(db) {
+  return resolveDefaultCategory(db, 'ingreso', DEFAULT_INCOME_CATEGORY_NAME)
+}
+
+function resolveDefaultExpenseCategory(db) {
+  return resolveDefaultCategory(db, 'gasto', DEFAULT_EXPENSE_CATEGORY_NAME)
 }
 
 // Bancolombia manda un mensaje DISTINTO cuando una compra es rechazada
@@ -441,16 +451,28 @@ widgetExpenses.post('/', (c) => guarded(c, '/api/widget/expenses', async () => {
   if (normalized.error) return errorResult(normalized.status, normalized.error, normalized.code)
 
   const dbStart = Date.now()
+  const categoriaProvided = (body.categoria_id !== undefined && body.categoria_id !== null && body.categoria_id !== '')
+    || (typeof body.categoria === 'string' && body.categoria.trim() !== '')
+
   // Un ingreso detectado por mensaje ("recibiste...") usa siempre la
   // categoría por defecto, ignorando `categoria`/`categoria_id` del body
-  // (ver comentario en resolveDefaultIncomeCategory). El flujo manual
-  // (sin mensaje, con tipo:'ingreso' explícito) sí respeta esos campos.
-  const categoryResult = normalized.expense.tipo === 'ingreso' && mensaje
-    ? await withDbTimeout(resolveDefaultIncomeCategory(c.env.DB), 'buscarCategoriaIngresoDefecto')
-    : await withDbTimeout(
+  // (ver comentario en resolveDefaultCategory): el Atajo manda un valor
+  // pensado para gastos que no existe como categoría de ingreso. Un gasto
+  // detectado por mensaje SIN categoría explícita también usa un default
+  // ("Otros gastos") para no exigirle al Atajo un paso extra de elegir
+  // categoría; si sí manda una, se respeta. El flujo manual (sin mensaje,
+  // con tipo explícito) siempre respeta lo que venga en el body.
+  let categoryResult
+  if (normalized.expense.tipo === 'ingreso' && mensaje) {
+    categoryResult = await withDbTimeout(resolveDefaultIncomeCategory(c.env.DB), 'buscarCategoriaIngresoDefecto')
+  } else if (normalized.expense.tipo === 'gasto' && mensaje && !categoriaProvided) {
+    categoryResult = await withDbTimeout(resolveDefaultExpenseCategory(c.env.DB), 'buscarCategoriaGastoDefecto')
+  } else {
+    categoryResult = await withDbTimeout(
       resolveExpenseCategory(c.env.DB, body, normalized.expense.tipo),
       'buscarCategoriaAtajo',
     )
+  }
   if (categoryResult.error) {
     return errorResult(categoryResult.status, categoryResult.error, categoryResult.code, {
       auth: 'ok',

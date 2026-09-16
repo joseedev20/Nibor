@@ -1504,6 +1504,21 @@ async function run() {
     throw new Error(`Widget de gastos no vinculo la tarjeta Nu *1364 detectada en el mensaje: ${JSON.stringify(widgetExpenseFromNuPurchaseMessage)}`)
   }
 
+  // Gasto por mensaje SIN categoria_id: debe caer solo en "Otros gastos" en
+  // vez de exigir el paso de elegir categoria en el Atajo.
+  const widgetExpenseNoCategoria = await post('/widget/expenses?token=smoke-expenses-token', {
+    mensaje: 'Compra aprobada por $15.000,00En EXITO por $15.000,00 con tu tarjeta 1364.',
+    request_id: `${widgetExpenseRequestId}-mensaje-sin-categoria`,
+    fecha: `${smokeYear}-04-19`,
+  })
+  if (
+    widgetExpenseNoCategoria.movimiento?.tipo !== 'gasto'
+    || widgetExpenseNoCategoria.movimiento?.monto !== 15000
+    || widgetExpenseNoCategoria.movimiento?.categoria !== 'Otros gastos'
+  ) {
+    throw new Error(`Widget de gastos no aplico la categoria por defecto para gasto sin categoria_id: ${JSON.stringify(widgetExpenseNoCategoria)}`)
+  }
+
   // El mensaje de "recibiste" de Nu no trae ningun digito de la cuenta
   // propia (a diferencia de Bancolombia) — no debe adivinar ninguna tarjeta.
   const widgetIncomeFromNuMessage = await post('/widget/expenses?token=smoke-expenses-token', {
