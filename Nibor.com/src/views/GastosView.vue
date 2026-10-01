@@ -43,6 +43,7 @@ const pendingFixedExpense = computed(() => pendingSubscriptions.value
 const fixedBalance = computed(() => fixedIncomeTotal.value - fixedExpenseTotal.value)
 const hasFixedTemplates = computed(() => subscriptions.value.length > 0)
 const hasPendingFixed = computed(() => pendingSubscriptions.value.length > 0)
+const creditCards = computed(() => cards.value.filter((card) => card.tipo === 'credito'))
 const totals = computed(() => summary.value?.movimientos ?? {
   total_ingresos: 0,
   total_gastos: 0,
@@ -60,6 +61,7 @@ function emptyForm(tipo = 'gasto') {
     categoria_id: '',
     subscription_id: '',
     card_id: '',
+    pago_tarjeta_id: '',
     descripcion: '',
     monto: '',
   }
@@ -130,6 +132,7 @@ function openEdit(movement) {
     categoria_id: movement.categoria_id ?? '',
     subscription_id: movement.subscription_id ?? '',
     card_id: movement.card_id ?? '',
+    pago_tarjeta_id: movement.pago_tarjeta_id ?? '',
     descripcion: movement.descripcion ?? '',
     monto: movement.monto,
   }
@@ -152,6 +155,7 @@ async function saveMovement() {
     categoria_id: form.value.categoria_id === '' ? null : Number(form.value.categoria_id),
     subscription_id: form.value.subscription_id === '' ? null : Number(form.value.subscription_id),
     card_id: form.value.card_id === '' ? null : Number(form.value.card_id),
+    pago_tarjeta_id: form.value.tipo === 'gasto' && form.value.pago_tarjeta_id !== '' ? Number(form.value.pago_tarjeta_id) : null,
     descripcion: form.value.descripcion,
     monto: Number(form.value.monto),
   }
@@ -326,6 +330,7 @@ onMounted(loadData)
               <span class="block truncate text-xs text-zinc-500 dark:text-zinc-400">
                 {{ formatDate(movement.fecha) }} · {{ movement.categoria_nombre ?? 'Sin categoría' }}
                 <template v-if="movement.card_nombre"> · {{ movement.card_ultimos_digitos ? '💳' : '' }} {{ movement.card_nombre }}{{ movement.card_ultimos_digitos ? ` *${movement.card_ultimos_digitos}` : '' }}</template>
+                <template v-if="movement.pago_tarjeta_nombre"> · <span class="font-medium text-amber-600 dark:text-amber-400">pago a {{ movement.pago_tarjeta_nombre }}</span></template>
               </span>
             </span>
             <span class="text-right text-sm font-semibold tabular-nums" :class="movement.tipo === 'ingreso' ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'">
@@ -404,6 +409,19 @@ onMounted(loadData)
                 {{ card.tipo === 'cuenta' ? '🏦' : '💳' }} {{ card.nombre }}{{ card.ultimos_digitos ? ` (•••• ${card.ultimos_digitos})` : '' }}
               </option>
             </select>
+          </label>
+
+          <label v-if="form.tipo === 'gasto' && creditCards.length" class="grid gap-1 text-sm">
+            <span class="font-medium text-zinc-700 dark:text-zinc-300">¿Es el pago de una tarjeta de crédito?</span>
+            <select v-model="form.pago_tarjeta_id" class="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
+              <option value="">No, es un gasto normal</option>
+              <option v-for="card in creditCards" :key="card.id" :value="card.id">
+                💳 Pagar {{ card.nombre }}
+              </option>
+            </select>
+            <span class="text-xs text-zinc-500 dark:text-zinc-400">
+              Marca esto solo cuando pagues la cuota/factura de la tarjeta (no la compra en sí) — así no se cuenta dos veces en Gastos, porque la compra ya se contó cuando la hiciste. Sí se descuenta de la deuda real de esa tarjeta en Tarjetas.
+            </span>
           </label>
 
           <label class="grid gap-1 text-sm">

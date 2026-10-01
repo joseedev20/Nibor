@@ -78,6 +78,8 @@ function emptyForm() {
     cupo: '',
     color: '#2563eb',
     activa: true,
+    saldo_inicial: '',
+    saldo_inicial_fecha: '',
   }
 }
 
@@ -138,6 +140,8 @@ function openEdit(card) {
     cupo: card.cupo ?? '',
     color: card.color ?? '#2563eb',
     activa: Number(card.activa) === 1,
+    saldo_inicial: card.saldo_inicial ?? '',
+    saldo_inicial_fecha: card.saldo_inicial_fecha ?? '',
   }
   editorOpen.value = true
 }
@@ -161,6 +165,8 @@ async function saveCard() {
     cupo: form.value.cupo === '' ? null : Number(form.value.cupo),
     color: form.value.color,
     activa: form.value.activa,
+    saldo_inicial: form.value.saldo_inicial === '' ? null : Number(form.value.saldo_inicial),
+    saldo_inicial_fecha: form.value.saldo_inicial_fecha || null,
   }
 
   try {
@@ -265,6 +271,10 @@ onMounted(() => {
                   <template v-if="card.tipo === 'credito' && card.cupo"> · cupo {{ formatCOP(card.cupo) }}</template>
                 </span>
                 <span class="block text-xs text-zinc-400 dark:text-zinc-500">{{ card.suscripciones ?? 0 }} fijos asociados · {{ formatCOP(card.total_mensual ?? 0) }}/mes en fijos</span>
+                <span class="mt-0.5 block text-sm font-semibold" :class="card.tipo === 'credito' ? 'text-amber-700 dark:text-amber-400' : 'text-emerald-700 dark:text-emerald-400'">
+                  {{ card.tipo === 'credito' ? 'Debes' : 'Tienes' }} {{ formatCOP(Math.abs(card.saldo_actual ?? 0)) }}
+                  <span v-if="card.saldo_inicial === null" class="text-xs font-normal text-zinc-400">(solo desde que empezaste a registrar)</span>
+                </span>
               </span>
             </button>
             <button
@@ -316,6 +326,7 @@ onMounted(() => {
             <span class="block text-xs text-zinc-500 dark:text-zinc-400">
               {{ formatDate(movement.fecha) }} · {{ movement.categoria_nombre ?? 'Sin categoría' }}
               <template v-if="movement.card_nombre"> · {{ movement.card_ultimos_digitos ? '💳' : '' }} {{ movement.card_nombre }}{{ movement.card_ultimos_digitos ? ` *${movement.card_ultimos_digitos}` : '' }}</template>
+              <template v-if="movement.pago_tarjeta_nombre"> · <span class="font-medium text-amber-600 dark:text-amber-400">pago a {{ movement.pago_tarjeta_nombre }}</span></template>
             </span>
           </span>
           <span class="text-sm font-semibold tabular-nums text-rose-700 dark:text-rose-400">{{ formatCOP(movement.monto) }}</span>
@@ -373,6 +384,20 @@ onMounted(() => {
 
           <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
             Solo los últimos 4 dígitos. Nunca escribas el número completo, la fecha de vencimiento ni el CVV.
+          </div>
+
+          <div class="grid gap-4 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800 sm:grid-cols-2">
+            <label class="grid gap-1 text-sm">
+              <span class="font-medium text-zinc-700 dark:text-zinc-300">{{ form.tipo === 'credito' ? 'Deuda inicial' : 'Saldo inicial' }}</span>
+              <input v-model="form.saldo_inicial" type="number" step="0.01" placeholder="Opcional" class="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
+            </label>
+            <label class="grid gap-1 text-sm">
+              <span class="font-medium text-zinc-700 dark:text-zinc-300">Desde</span>
+              <input v-model="form.saldo_inicial_fecha" type="date" class="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
+            </label>
+            <span class="text-xs font-normal text-zinc-400 sm:col-span-2">
+              Punto de partida para calcular el saldo/deuda real (abajo en la lista). Déjalo vacío si prefieres que solo cuente desde que empezaste a registrar movimientos.
+            </span>
           </div>
 
           <div v-if="editorError" class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300">{{ editorError }}</div>

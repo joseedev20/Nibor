@@ -58,12 +58,14 @@ async function getMovementById(db, id) {
   return first(
     db,
     `SELECT
-       m.id, m.fecha, m.tipo, m.categoria_id, m.descripcion, m.monto, m.subscription_id, m.card_id,
+       m.id, m.fecha, m.tipo, m.categoria_id, m.descripcion, m.monto, m.subscription_id, m.card_id, m.pago_tarjeta_id,
        c.nombre AS categoria_nombre, c.icono AS categoria_icono, c.color AS categoria_color,
-       t.nombre AS card_nombre, t.entidad AS card_entidad, t.ultimos_digitos AS card_ultimos_digitos
+       t.nombre AS card_nombre, t.entidad AS card_entidad, t.ultimos_digitos AS card_ultimos_digitos,
+       p.nombre AS pago_tarjeta_nombre
      FROM movements m
      LEFT JOIN categories c ON c.id = m.categoria_id
      LEFT JOIN cards t ON t.id = m.card_id
+     LEFT JOIN cards p ON p.id = m.pago_tarjeta_id
      WHERE m.id = ?`,
     id,
   )
@@ -77,6 +79,18 @@ async function validateCategory(db, categoria_id, tipo) {
   return null
 }
 
+// pago_tarjeta_id marca "este gasto fue pagar la cuota de esa tarjeta de
+// credito" (card_id sigue siendo de donde salio la plata). Solo tiene
+// sentido sobre un gasto, y solo apuntando a una tarjeta tipo 'credito' —
+// pagarle a una cuenta/debito no reduce ninguna deuda.
+async function validatePagoTarjeta(db, pago_tarjeta_id) {
+  if (pago_tarjeta_id === null) return null
+  const card = await first(db, 'SELECT id, tipo FROM cards WHERE id = ?', pago_tarjeta_id)
+  if (!card) return 'La tarjeta a pagar no existe'
+  if (card.tipo !== 'credito') return 'Solo se puede marcar como pago a una tarjeta de crédito'
+  return null
+}
+
 function normalizeMovement(body, current = {}) {
   return {
     fecha: body.fecha === undefined ? current.fecha : String(body.fecha).trim(),
@@ -86,6 +100,7 @@ function normalizeMovement(body, current = {}) {
     monto: body.monto === undefined ? current.monto : toNumber(body.monto),
     subscription_id: body.subscription_id === undefined ? current.subscription_id ?? null : toInteger(body.subscription_id, null),
     card_id: body.card_id === undefined ? current.card_id ?? null : toInteger(body.card_id, null),
+    pago_tarjeta_id: body.pago_tarjeta_id === undefined ? current.pago_tarjeta_id ?? null : toInteger(body.pago_tarjeta_id, null),
   }
 }
 
@@ -96,6 +111,10 @@ function validateMovement(movement) {
   if (!isNonNegative(movement.monto)) return 'El monto debe ser mayor o igual a 0'
   if (movement.subscription_id !== null && !Number.isInteger(movement.subscription_id)) return 'La suscripción debe ser válida'
   if (movement.card_id !== null && !Number.isInteger(movement.card_id)) return 'La tarjeta debe ser válida'
+  if (movement.pago_tarjeta_id !== null) {
+    if (!Number.isInteger(movement.pago_tarjeta_id)) return 'La tarjeta a pagar debe ser válida'
+    if (movement.tipo !== 'gasto') return 'Solo un gasto puede marcarse como pago a tarjeta de crédito'
+  }
   return null
 }
 
@@ -106,12 +125,14 @@ movements.get('/', async (c) => {
   const rows = await all(
     c.env.DB,
     `SELECT
-       m.id, m.fecha, m.tipo, m.categoria_id, m.descripcion, m.monto, m.subscription_id, m.card_id,
+       m.id, m.fecha, m.tipo, m.categoria_id, m.descripcion, m.monto, m.subscription_id, m.card_id, m.pago_tarjeta_id,
        c.nombre AS categoria_nombre, c.icono AS categoria_icono, c.color AS categoria_color,
-       t.nombre AS card_nombre, t.entidad AS card_entidad, t.ultimos_digitos AS card_ultimos_digitos
+       t.nombre AS card_nombre, t.entidad AS card_entidad, t.ultimos_digitos AS card_ultimos_digitos,
+       p.nombre AS pago_tarjeta_nombre
      FROM movements m
      LEFT JOIN categories c ON c.id = m.categoria_id
      LEFT JOIN cards t ON t.id = m.card_id
+     LEFT JOIN cards p ON p.id = m.pago_tarjeta_id
      ${filters.sql}
      ORDER BY m.fecha DESC, m.id DESC`,
     ...filters.params,
@@ -130,10 +151,13 @@ movements.post('/', async (c) => {
   const categoryError = await validateCategory(c.env.DB, movement.categoria_id, movement.tipo)
   if (categoryError) return fail(c, categoryError, 404)
 
+  const pagoError = await validatePagoTarjeta(c.env.DB, movement.pago_tarjeta_id)
+  if (pagoError) return fail(c, pagoError, 404)
+
   const meta = await run(
     c.env.DB,
-    `INSERT INTO movements (fecha, tipo, categoria_id, descripcion, monto, subscription_id, card_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO movements (fecha, tipo, categoria_id, descripcion, monto, subscription_id, card_id, pago_tarjeta_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     movement.fecha,
     movement.tipo,
     movement.categoria_id,
@@ -141,6 +165,7 @@ movements.post('/', async (c) => {
     movement.monto,
     movement.subscription_id,
     movement.card_id,
+    movement.pago_tarjeta_id,
   )
 
   return ok(c, await getMovementById(c.env.DB, meta.last_row_id), 201)
@@ -163,10 +188,13 @@ movements.put('/:id', async (c) => {
   const categoryError = await validateCategory(c.env.DB, movement.categoria_id, movement.tipo)
   if (categoryError) return fail(c, categoryError, 404)
 
+  const pagoError = await validatePagoTarjeta(c.env.DB, movement.pago_tarjeta_id)
+  if (pagoError) return fail(c, pagoError, 404)
+
   await run(
     c.env.DB,
     `UPDATE movements
-     SET fecha = ?, tipo = ?, categoria_id = ?, descripcion = ?, monto = ?, subscription_id = ?, card_id = ?
+     SET fecha = ?, tipo = ?, categoria_id = ?, descripcion = ?, monto = ?, subscription_id = ?, card_id = ?, pago_tarjeta_id = ?
      WHERE id = ?`,
     movement.fecha,
     movement.tipo,
@@ -175,6 +203,7 @@ movements.put('/:id', async (c) => {
     movement.monto,
     movement.subscription_id,
     movement.card_id,
+    movement.pago_tarjeta_id,
     id,
   )
 

@@ -299,6 +299,64 @@ async function run() {
   })
   if (!nuCard.id || nuCard.entidad !== 'Nu') throw new Error(`No se creo tarjeta Nu smoke: ${JSON.stringify(nuCard)}`)
 
+  // --- Saldo real (no solo "gastado este mes") y pago de tarjeta de credito ---
+  const saldoAccount = await post('/cards', { nombre: 'Smoke cuenta saldo', tipo: 'cuenta', saldo_inicial: 100000 })
+  const saldoCredit = await post('/cards', { nombre: 'Smoke credito saldo', tipo: 'credito', saldo_inicial: 50000 })
+
+  await post('/movements', {
+    fecha: `${smokeYear}-05-01`, tipo: 'ingreso', categoria_id: incomeCategory.id,
+    descripcion: 'Smoke ingreso saldo', monto: 200000, card_id: saldoAccount.id,
+  })
+  await post('/movements', {
+    fecha: `${smokeYear}-05-02`, tipo: 'gasto', categoria_id: expenseCategory.id,
+    descripcion: 'Smoke compra credito saldo', monto: 30000, card_id: saldoCredit.id,
+  })
+
+  const pagoSobreIngreso = await expectFailure('/movements', {
+    method: 'POST',
+    body: JSON.stringify({
+      fecha: `${smokeYear}-05-04`, tipo: 'ingreso', categoria_id: incomeCategory.id,
+      descripcion: 'Smoke pago invalido', monto: 1000, pago_tarjeta_id: saldoCredit.id,
+    }),
+  })
+  if (!String(pagoSobreIngreso.error ?? '').includes('gasto')) throw new Error('No rechazo pago_tarjeta_id sobre un ingreso')
+
+  const pagoSobreCuenta = await expectFailure('/movements', {
+    method: 'POST',
+    body: JSON.stringify({
+      fecha: `${smokeYear}-05-04`, tipo: 'gasto', categoria_id: expenseCategory.id,
+      descripcion: 'Smoke pago invalido 2', monto: 1000, pago_tarjeta_id: saldoAccount.id,
+    }),
+  })
+  if (!String(pagoSobreCuenta.error ?? '').includes('crédito')) throw new Error('No rechazo pago_tarjeta_id apuntando a una cuenta/debito')
+
+  const summaryBeforePayment = await request(`/summary?anio=${smokeYear}&mes=5`)
+  const gastosBeforePayment = summaryBeforePayment.movimientos.total_gastos
+
+  const saldoPayment = await post('/movements', {
+    fecha: `${smokeYear}-05-03`, tipo: 'gasto', categoria_id: expenseCategory.id,
+    descripcion: 'Smoke pago tarjeta credito', monto: 25000, card_id: saldoAccount.id, pago_tarjeta_id: saldoCredit.id,
+  })
+  if (saldoPayment.pago_tarjeta_id !== saldoCredit.id || saldoPayment.pago_tarjeta_nombre !== saldoCredit.nombre) {
+    throw new Error(`El pago de tarjeta no guardo pago_tarjeta_id/nombre: ${JSON.stringify(saldoPayment)}`)
+  }
+
+  const summaryAfterPayment = await request(`/summary?anio=${smokeYear}&mes=5`)
+  const gastosAfterPayment = summaryAfterPayment.movimientos.total_gastos
+  if (gastosAfterPayment !== gastosBeforePayment) {
+    throw new Error(`El pago de tarjeta se conto en los totales de Gastos (antes ${gastosBeforePayment}, despues ${gastosAfterPayment})`)
+  }
+
+  const saldoCardsAfter = await request('/cards')
+  const accountAfter = saldoCardsAfter.find((item) => item.id === saldoAccount.id)
+  const creditAfter = saldoCardsAfter.find((item) => item.id === saldoCredit.id)
+  if (Number(accountAfter?.saldo_actual) !== 275000) {
+    throw new Error(`Saldo real de cuenta incorrecto: esperado 275000, obtuvo ${accountAfter?.saldo_actual}`)
+  }
+  if (Number(creditAfter?.saldo_actual) !== 55000) {
+    throw new Error(`Deuda real de tarjeta de credito incorrecta: esperado 55000, obtuvo ${creditAfter?.saldo_actual}`)
+  }
+
   const subscription = await post('/subscriptions', {
     nombre: `Smoke suscripcion ${Date.now()}`,
     monto: 99,

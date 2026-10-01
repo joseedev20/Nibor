@@ -80,11 +80,14 @@ function buildSeries(rows) {
 
 async function movementTotals(db, anio, mes) {
   const { start, end } = getMonthBounds(anio, mes)
+  // pago_tarjeta_id IS NOT NULL = pagar la cuota de una tarjeta de credito,
+  // no un gasto nuevo (la compra original ya se conto cuando se hizo) —
+  // se excluye para no duplicar la misma plata en Gastos/Balance.
   const totals = await first(
     db,
     `SELECT
        COALESCE(SUM(CASE WHEN tipo = 'ingreso' THEN monto ELSE 0 END), 0) AS total_ingresos,
-       COALESCE(SUM(CASE WHEN tipo = 'gasto' THEN monto ELSE 0 END), 0) AS total_gastos
+       COALESCE(SUM(CASE WHEN tipo = 'gasto' AND pago_tarjeta_id IS NULL THEN monto ELSE 0 END), 0) AS total_gastos
      FROM movements
      WHERE fecha BETWEEN ? AND ?`,
     start,
@@ -101,7 +104,7 @@ async function movementTotals(db, anio, mes) {
        SUM(m.monto) AS total
      FROM movements m
      LEFT JOIN categories c ON c.id = m.categoria_id
-     WHERE m.tipo = 'gasto' AND m.fecha BETWEEN ? AND ?
+     WHERE m.tipo = 'gasto' AND m.pago_tarjeta_id IS NULL AND m.fecha BETWEEN ? AND ?
      GROUP BY c.id, c.nombre, c.icono, c.color
      ORDER BY total DESC`,
     start,
