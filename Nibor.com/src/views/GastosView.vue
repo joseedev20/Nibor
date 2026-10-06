@@ -9,6 +9,7 @@ const movements = ref([])
 const categories = ref([])
 const subscriptions = ref([])
 const cards = ref([])
+const vehicles = ref([])
 const summary = ref(null)
 const loading = ref(false)
 const saving = ref(false)
@@ -44,6 +45,12 @@ const fixedBalance = computed(() => fixedIncomeTotal.value - fixedExpenseTotal.v
 const hasFixedTemplates = computed(() => subscriptions.value.length > 0)
 const hasPendingFixed = computed(() => pendingSubscriptions.value.length > 0)
 const creditCards = computed(() => cards.value.filter((card) => card.tipo === 'credito'))
+const activeVehicles = computed(() => vehicles.value.filter((vehicle) => Number(vehicle.activa) === 1))
+const showVehicleSelect = computed(() => {
+  if (form.value.tipo !== 'gasto' || form.value.categoria_id === '') return false
+  const selected = categories.value.find((category) => Number(category.id) === Number(form.value.categoria_id))
+  return selected?.nombre === 'Vehículos'
+})
 const totals = computed(() => summary.value?.movimientos ?? {
   total_ingresos: 0,
   total_gastos: 0,
@@ -62,6 +69,7 @@ function emptyForm(tipo = 'gasto') {
     subscription_id: '',
     card_id: '',
     pago_tarjeta_id: '',
+    vehicle_id: '',
     descripcion: '',
     monto: '',
   }
@@ -79,18 +87,20 @@ async function loadData() {
   error.value = ''
   try {
     const query = `anio=${selectedYear.value}&mes=${selectedMonth.value}`
-    const [movementsData, categoriesData, summaryData, subscriptionsData, cardsData] = await Promise.all([
+    const [movementsData, categoriesData, summaryData, subscriptionsData, cardsData, vehiclesData] = await Promise.all([
       fetchJson(`/api/movements?${query}`),
       fetchJson('/api/categories'),
       fetchJson(`/api/summary?${query}`),
       fetchJson('/api/subscriptions?activa=1'),
       fetchJson('/api/cards?activa=1'),
+      fetchJson('/api/vehicles'),
     ])
     movements.value = movementsData
     categories.value = categoriesData
     summary.value = summaryData
     subscriptions.value = subscriptionsData
     cards.value = cardsData
+    vehicles.value = vehiclesData
   } catch (err) {
     error.value = err.message
   } finally {
@@ -133,6 +143,7 @@ function openEdit(movement) {
     subscription_id: movement.subscription_id ?? '',
     card_id: movement.card_id ?? '',
     pago_tarjeta_id: movement.pago_tarjeta_id ?? '',
+    vehicle_id: movement.vehicle_id ?? '',
     descripcion: movement.descripcion ?? '',
     monto: movement.monto,
   }
@@ -156,6 +167,7 @@ async function saveMovement() {
     subscription_id: form.value.subscription_id === '' ? null : Number(form.value.subscription_id),
     card_id: form.value.card_id === '' ? null : Number(form.value.card_id),
     pago_tarjeta_id: form.value.tipo === 'gasto' && form.value.pago_tarjeta_id !== '' ? Number(form.value.pago_tarjeta_id) : null,
+    vehicle_id: showVehicleSelect.value && form.value.vehicle_id !== '' ? Number(form.value.vehicle_id) : null,
     descripcion: form.value.descripcion,
     monto: Number(form.value.monto),
   }
@@ -330,6 +342,7 @@ onMounted(loadData)
               <span class="block truncate text-xs text-zinc-500 dark:text-zinc-400">
                 {{ formatDate(movement.fecha) }} · {{ movement.categoria_nombre ?? 'Sin categoría' }}
                 <template v-if="movement.card_nombre"> · {{ movement.card_ultimos_digitos ? '💳' : '' }} {{ movement.card_nombre }}{{ movement.card_ultimos_digitos ? ` *${movement.card_ultimos_digitos}` : '' }}</template>
+                <template v-if="movement.vehicle_nombre"> · 🚗 {{ movement.vehicle_nombre }}</template>
                 <template v-if="movement.pago_tarjeta_nombre"> · <span class="font-medium text-amber-600 dark:text-amber-400">pago a {{ movement.pago_tarjeta_nombre }}</span></template>
               </span>
             </span>
@@ -385,6 +398,16 @@ onMounted(loadData)
             <select v-model="form.categoria_id" class="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
               <option value="">Sin categoría</option>
               <option v-for="category in formCategories" :key="category.id" :value="category.id">{{ category.icono }} {{ category.nombre }}</option>
+            </select>
+          </label>
+
+          <label v-if="showVehicleSelect" class="grid gap-1 text-sm">
+            <span class="font-medium text-zinc-700 dark:text-zinc-300">¿A qué vehículo?</span>
+            <select v-model="form.vehicle_id" class="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
+              <option value="">Sin vehículo específico</option>
+              <option v-for="vehicle in activeVehicles" :key="vehicle.id" :value="vehicle.id">
+                {{ vehicle.tipo === 'moto' ? '🏍️' : '🚗' }} {{ vehicle.nombre }}{{ vehicle.placa ? ` (${vehicle.placa})` : '' }}
+              </option>
             </select>
           </label>
 

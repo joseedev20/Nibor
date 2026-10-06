@@ -58,14 +58,16 @@ async function getMovementById(db, id) {
   return first(
     db,
     `SELECT
-       m.id, m.fecha, m.tipo, m.categoria_id, m.descripcion, m.monto, m.subscription_id, m.card_id, m.pago_tarjeta_id,
+       m.id, m.fecha, m.tipo, m.categoria_id, m.descripcion, m.monto, m.subscription_id, m.card_id, m.pago_tarjeta_id, m.vehicle_id,
        c.nombre AS categoria_nombre, c.icono AS categoria_icono, c.color AS categoria_color,
        t.nombre AS card_nombre, t.entidad AS card_entidad, t.ultimos_digitos AS card_ultimos_digitos,
-       p.nombre AS pago_tarjeta_nombre
+       p.nombre AS pago_tarjeta_nombre,
+       v.nombre AS vehicle_nombre, v.placa AS vehicle_placa
      FROM movements m
      LEFT JOIN categories c ON c.id = m.categoria_id
      LEFT JOIN cards t ON t.id = m.card_id
      LEFT JOIN cards p ON p.id = m.pago_tarjeta_id
+     LEFT JOIN vehicles v ON v.id = m.vehicle_id
      WHERE m.id = ?`,
     id,
   )
@@ -91,6 +93,13 @@ async function validatePagoTarjeta(db, pago_tarjeta_id) {
   return null
 }
 
+async function validateVehicle(db, vehicle_id) {
+  if (vehicle_id === null) return null
+  const vehicle = await first(db, 'SELECT id FROM vehicles WHERE id = ?', vehicle_id)
+  if (!vehicle) return 'Vehículo no encontrado'
+  return null
+}
+
 function normalizeMovement(body, current = {}) {
   return {
     fecha: body.fecha === undefined ? current.fecha : String(body.fecha).trim(),
@@ -101,6 +110,7 @@ function normalizeMovement(body, current = {}) {
     subscription_id: body.subscription_id === undefined ? current.subscription_id ?? null : toInteger(body.subscription_id, null),
     card_id: body.card_id === undefined ? current.card_id ?? null : toInteger(body.card_id, null),
     pago_tarjeta_id: body.pago_tarjeta_id === undefined ? current.pago_tarjeta_id ?? null : toInteger(body.pago_tarjeta_id, null),
+    vehicle_id: body.vehicle_id === undefined ? current.vehicle_id ?? null : toInteger(body.vehicle_id, null),
   }
 }
 
@@ -115,6 +125,10 @@ function validateMovement(movement) {
     if (!Number.isInteger(movement.pago_tarjeta_id)) return 'La tarjeta a pagar debe ser válida'
     if (movement.tipo !== 'gasto') return 'Solo un gasto puede marcarse como pago a tarjeta de crédito'
   }
+  if (movement.vehicle_id !== null) {
+    if (!Number.isInteger(movement.vehicle_id)) return 'El vehículo debe ser válido'
+    if (movement.tipo !== 'gasto') return 'Solo un gasto puede asociarse a un vehículo'
+  }
   return null
 }
 
@@ -125,14 +139,16 @@ movements.get('/', async (c) => {
   const rows = await all(
     c.env.DB,
     `SELECT
-       m.id, m.fecha, m.tipo, m.categoria_id, m.descripcion, m.monto, m.subscription_id, m.card_id, m.pago_tarjeta_id,
+       m.id, m.fecha, m.tipo, m.categoria_id, m.descripcion, m.monto, m.subscription_id, m.card_id, m.pago_tarjeta_id, m.vehicle_id,
        c.nombre AS categoria_nombre, c.icono AS categoria_icono, c.color AS categoria_color,
        t.nombre AS card_nombre, t.entidad AS card_entidad, t.ultimos_digitos AS card_ultimos_digitos,
-       p.nombre AS pago_tarjeta_nombre
+       p.nombre AS pago_tarjeta_nombre,
+       v.nombre AS vehicle_nombre, v.placa AS vehicle_placa
      FROM movements m
      LEFT JOIN categories c ON c.id = m.categoria_id
      LEFT JOIN cards t ON t.id = m.card_id
      LEFT JOIN cards p ON p.id = m.pago_tarjeta_id
+     LEFT JOIN vehicles v ON v.id = m.vehicle_id
      ${filters.sql}
      ORDER BY m.fecha DESC, m.id DESC`,
     ...filters.params,
@@ -154,10 +170,13 @@ movements.post('/', async (c) => {
   const pagoError = await validatePagoTarjeta(c.env.DB, movement.pago_tarjeta_id)
   if (pagoError) return fail(c, pagoError, 404)
 
+  const vehicleError = await validateVehicle(c.env.DB, movement.vehicle_id)
+  if (vehicleError) return fail(c, vehicleError, 404)
+
   const meta = await run(
     c.env.DB,
-    `INSERT INTO movements (fecha, tipo, categoria_id, descripcion, monto, subscription_id, card_id, pago_tarjeta_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO movements (fecha, tipo, categoria_id, descripcion, monto, subscription_id, card_id, pago_tarjeta_id, vehicle_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     movement.fecha,
     movement.tipo,
     movement.categoria_id,
@@ -166,6 +185,7 @@ movements.post('/', async (c) => {
     movement.subscription_id,
     movement.card_id,
     movement.pago_tarjeta_id,
+    movement.vehicle_id,
   )
 
   return ok(c, await getMovementById(c.env.DB, meta.last_row_id), 201)
@@ -191,10 +211,13 @@ movements.put('/:id', async (c) => {
   const pagoError = await validatePagoTarjeta(c.env.DB, movement.pago_tarjeta_id)
   if (pagoError) return fail(c, pagoError, 404)
 
+  const vehicleError = await validateVehicle(c.env.DB, movement.vehicle_id)
+  if (vehicleError) return fail(c, vehicleError, 404)
+
   await run(
     c.env.DB,
     `UPDATE movements
-     SET fecha = ?, tipo = ?, categoria_id = ?, descripcion = ?, monto = ?, subscription_id = ?, card_id = ?, pago_tarjeta_id = ?
+     SET fecha = ?, tipo = ?, categoria_id = ?, descripcion = ?, monto = ?, subscription_id = ?, card_id = ?, pago_tarjeta_id = ?, vehicle_id = ?
      WHERE id = ?`,
     movement.fecha,
     movement.tipo,
@@ -204,6 +227,7 @@ movements.put('/:id', async (c) => {
     movement.subscription_id,
     movement.card_id,
     movement.pago_tarjeta_id,
+    movement.vehicle_id,
     id,
   )
 

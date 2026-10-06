@@ -357,6 +357,31 @@ async function run() {
     throw new Error(`Deuda real de tarjeta de credito incorrecta: esperado 55000, obtuvo ${creditAfter?.saldo_actual}`)
   }
 
+  const vehicleMovementVehicle = await post('/vehicles', { nombre: `Smoke vehiculo gasto ${Date.now()}`, tipo: 'moto', placa: 'SMKV01', color: '#2563eb' })
+  const vehicleMovement = await post('/movements', {
+    fecha: `${smokeYear}-05-10`, tipo: 'gasto', categoria_id: expenseCategory.id,
+    descripcion: 'Smoke gasto de vehiculo', monto: 15000, vehicle_id: vehicleMovementVehicle.id,
+  })
+  if (vehicleMovement.vehicle_id !== vehicleMovementVehicle.id || vehicleMovement.vehicle_nombre !== vehicleMovementVehicle.nombre) {
+    throw new Error(`El movimiento no guardo vehicle_id/nombre: ${JSON.stringify(vehicleMovement)}`)
+  }
+  const vehicleOnIncome = await expectFailure('/movements', {
+    method: 'POST',
+    body: JSON.stringify({
+      fecha: `${smokeYear}-05-10`, tipo: 'ingreso', categoria_id: incomeCategory.id,
+      descripcion: 'Smoke ingreso con vehiculo', monto: 1000, vehicle_id: vehicleMovementVehicle.id,
+    }),
+  })
+  if (!String(vehicleOnIncome.error ?? '').includes('gasto')) throw new Error('No rechazo vehicle_id sobre un ingreso')
+  const vehicleMissing = await expectFailure('/movements', {
+    method: 'POST',
+    body: JSON.stringify({
+      fecha: `${smokeYear}-05-10`, tipo: 'gasto', categoria_id: expenseCategory.id,
+      descripcion: 'Smoke vehiculo inexistente', monto: 1000, vehicle_id: 999999,
+    }),
+  })
+  if (!String(vehicleMissing.error ?? '').includes('Vehículo')) throw new Error('No rechazo un vehicle_id inexistente')
+
   const subscription = await post('/subscriptions', {
     nombre: `Smoke suscripcion ${Date.now()}`,
     monto: 99,
