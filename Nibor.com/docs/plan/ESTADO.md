@@ -1,6 +1,6 @@
 # Estado compartido — Nibor.com
 
-Actualizado: 2026-09-30 -05:00
+Actualizado: 2026-10-20 -05:00
 
 ## Decisión activa
 
@@ -52,6 +52,8 @@ Actualizado: 2026-09-30 -05:00
 - Access ya tiene dos correos exactos autorizados y OTP por correo; `workers.dev`/Preview URLs siguen desactivados. El Worker se despliega desde Git en `niborapp.com`.
 
 ## Handoff actual
+
+- 2026-10-20: Claude vinculó Recordatorios con Hábitos a pedido del usuario (caso real: recordatorio "Tomar Pastilla" <-> hábito "Losartan 50 mg"), migración `0038_reminder_habit_link.sql` (`reminders.habit_id NULL`, FK a `habits`). Completar el recordatorio (`POST /reminders/:id/complete`, también el widget) marca el hábito vinculado hecho hoy si aún no llegaba a su `target_per_day`; marcar el hábito (`POST /habits/:id/check`, también el widget) completa los recordatorios vinculados que sigan pendientes hoy — en ambas direcciones, solo cuando el hábito queda "cumplido" (no por cada repetición parcial si `target_per_day > 1`). `reminders.js` y `habits.js` no se importan estáticamente entre sí (evita ciclo); cada lado usa `import()` dinámico hacia el otro justo donde dispara el cascade. Borrar un hábito limpia `reminders.habit_id` en vez de dejar un vínculo roto. UI: `RecordatoriosView.vue` agrega el selector "Vincular con un hábito" (opcional) en el editor y muestra 🔗 + nombre del hábito en la fila; no se agregó UI espejo en Hábitos (el vínculo se edita solo desde Recordatorios). Smoke cubre ambas direcciones con aserciones exactas (el hábito deja de estar pendiente en `/habits/today`, el recordatorio pasa a `estado: 'completado'`) y el rechazo de `habit_id` inexistente. Verificado en vivo con curl + Playwright contra `npm run dev` replicando el caso real del usuario. npm test, build y smoke aislado OK. Pendiente: migración remota + deploy.
 
 - 2026-10-05: Claude conectó el gasto de vehículo con el editor de Gastos: `movements.vehicle_id` (ya existía desde migración 0017, sin migración nueva) ahora se lee, valida y guarda en `server/routes/movements.js` (solo sobre `tipo='gasto'`, vehículo debe existir) y se devuelve `vehicle_nombre`/`vehicle_placa`. `GastosView.vue` muestra el selector "¿A qué vehículo?" solo cuando la categoría elegida es "Vehículos", y la fila de la lista muestra 🚗 con el nombre del vehículo. Así cada gasto de moto/carro se puede ver por separado, igual que los gastos de la pestaña Vehículos. Smoke cubre vínculo, rechazo sobre ingreso y vehículo inexistente; verificado en navegador con Playwright. Pendiente: deploy (sin migración remota).
 

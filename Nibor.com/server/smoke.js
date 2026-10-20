@@ -1712,6 +1712,52 @@ async function run() {
   await del(`/reminders/${widgetReminder.id}`)
   await del(`/habits/${widgetHabit.id}`)
 
+  // --- Vinculo Recordatorio <-> Habito (bidireccional) ---
+  const linkHabitA = await post('/habits', { name: `Smoke link habito A ${Date.now()}`, target_per_day: 1 })
+  if (!linkHabitA.id) throw new Error('No se creo habito smoke A para el vinculo')
+
+  const badHabitLink = await expectFailure('/reminders', {
+    method: 'POST',
+    body: JSON.stringify({ titulo: 'Smoke recordatorio habito invalido', proxima_fecha: todayIso, habit_id: 999999 }),
+  })
+  if (!String(badHabitLink.error ?? '').includes('Hábito')) throw new Error('No rechazo habit_id inexistente en recordatorio')
+
+  // Recordatorio -> Habito: completar el recordatorio marca el habito vinculado
+  const linkReminderA = await post('/reminders', {
+    titulo: `Smoke recordatorio->habito ${Date.now()}`, proxima_fecha: todayIso, habit_id: linkHabitA.id,
+  })
+  if (linkReminderA.habit_nombre !== linkHabitA.name) {
+    throw new Error(`El recordatorio no trajo habit_nombre del vinculo: ${JSON.stringify(linkReminderA)}`)
+  }
+  const todayBeforeLink = await request('/habits/today')
+  if (!todayBeforeLink.habits.some((h) => h.id === linkHabitA.id)) {
+    throw new Error('El habito vinculado no aparecia pendiente antes de completar el recordatorio')
+  }
+  await post(`/reminders/${linkReminderA.id}/complete`, {})
+  const todayAfterLink = await request('/habits/today')
+  if (todayAfterLink.habits.some((h) => h.id === linkHabitA.id)) {
+    throw new Error('Completar el recordatorio no marco el habito vinculado')
+  }
+
+  // Habito -> Recordatorio: marcar el habito completa el recordatorio pendiente vinculado
+  const linkHabitB = await post('/habits', { name: `Smoke link habito B ${Date.now()}`, target_per_day: 1 })
+  const linkReminderB = await post('/reminders', {
+    titulo: `Smoke habito->recordatorio ${Date.now()}`, proxima_fecha: todayIso, habit_id: linkHabitB.id,
+  })
+  const checkLinkHabitB = await post(`/habits/${linkHabitB.id}/check`, {})
+  if (checkLinkHabitB.met !== true) throw new Error(`El check del habito B no quedo cumplido: ${JSON.stringify(checkLinkHabitB)}`)
+
+  const remindersAfterCheck = await request('/reminders')
+  const reminderBAfter = remindersAfterCheck.find((r) => r.id === linkReminderB.id)
+  if (!reminderBAfter || reminderBAfter.estado !== 'completado') {
+    throw new Error(`Marcar el habito no completo el recordatorio vinculado: ${JSON.stringify(reminderBAfter)}`)
+  }
+
+  await del(`/reminders/${linkReminderA.id}`)
+  await del(`/reminders/${linkReminderB.id}`)
+  await del(`/habits/${linkHabitA.id}`)
+  await del(`/habits/${linkHabitB.id}`)
+
   const vehicle = await post('/vehicles', {
     nombre: `Smoke vehiculo ${Date.now()}`,
     tipo: 'carro',

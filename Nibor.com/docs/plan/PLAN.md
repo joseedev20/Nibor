@@ -230,10 +230,17 @@ home_property_documents (id, property_id, nombre, file_key, file_name, file_size
                  -- agregado en migración 0032: PDFs privados en R2 (`casa/{id}/docs/…`)
 home_administration_periods (id, property_id, anio, mes, fecha_emision, numero_cuenta, fecha_limite_descuento, fecha_vencimiento, descuento_pct, descuento_valor, total_con_descuento, fecha_pago, valor_pagado, mora_cobrada, notas, file_key, file_name, file_size, created_at, updated_at)
                  -- UNIQUE(property_id, anio, mes); un solo PDF por mes (cuenta + comprobante unidos) en R2
-reminders        (id, titulo, notas, frecuencia_dias NULL=único, repetir_minutos NULL=general, proxima_fecha, hora, activo, completado_en)
+reminders        (id, titulo, notas, frecuencia_dias NULL=único, repetir_minutos NULL=general, proxima_fecha, hora, activo, completado_en, habit_id NULL)
                  -- agregado en migración 0028 para Nibor Recordatorios; los avisos los genera
                  -- la regla 'recordatorios' del motor varias veces al día con dedupe
                  -- `rec:{id}:{fecha}:{franja}` (franja en minutos desde medianoche =
+                 -- habit_id agregado en migración 0038: vincula el recordatorio con un hábito
+                 -- (ej. "Tomar Pastilla" <-> "Losartan 50 mg"). Completar uno marca el otro
+                 -- automáticamente, en ambas direcciones (server/routes/reminders.js
+                 -- completeReminderCore + server/routes/habits.js markHabitDoneFromLink,
+                 -- ligados con import() dinámico para no crear un ciclo estático entre los
+                 -- dos archivos). Solo se completa el hábito cuando llega a su target_per_day,
+                 -- y solo se completan recordatorios vinculados que sigan pendientes hoy.
                  -- repetir_minutos propio del recordatorio, migración 0030→0035, o el
                  -- general recordatorios_repetir_minutos, seed 0029→0035, mínimo 5 min,
                  -- cron cada 5 min en wrangler.toml)

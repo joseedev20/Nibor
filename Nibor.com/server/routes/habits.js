@@ -745,6 +745,7 @@ habits.delete('/:id', async (c) => {
   if (!current) return fail(c, 'Hábito no encontrado', 404)
 
   await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE reminders SET habit_id = NULL WHERE habit_id = ?').bind(id),
     c.env.DB.prepare('DELETE FROM habit_links WHERE habit_id = ?').bind(id),
     c.env.DB.prepare('DELETE FROM habit_defer WHERE habit_id = ?').bind(id),
     c.env.DB.prepare('DELETE FROM habit_schedule WHERE habit_id = ?').bind(id),
@@ -753,6 +754,40 @@ habits.delete('/:id', async (c) => {
   ])
   return ok(c, { id })
 })
+
+// Recordatorios vinculados (reminders.habit_id) se completan solo cuando el
+// hábito queda cumplido (met) — no por cada repetición parcial si
+// target_per_day > 1. Import dinámico: evita un ciclo estático con
+// reminders.js, que a su vez importa dinámicamente desde este archivo.
+async function completeLinkedReminders(db, habitId) {
+  const { completeLinkedRemindersForHabit } = await import('./reminders.js')
+  await completeLinkedRemindersForHabit(db, habitId)
+}
+
+// Marca el hábito como hecho "hoy" cuando se completa el recordatorio
+// vinculado (ver reminders.js: completeReminderCore). No dispara el cascade
+// de vuelta hacia recordatorios — ya estamos en esa dirección.
+export async function markHabitDoneFromLink(db, habitId) {
+  const habit = await getHabitById(db, habitId)
+  if (!habit || Number(habit.is_active) !== 1) return false
+  const date = todayBogota()
+  const done = await countHabitEventsForDate(db, habitId, date)
+  const target = Number(habit.target_per_day)
+  if (done >= target) return true
+
+  await run(
+    db,
+    `INSERT INTO habit_events (habit_id, event_time, source, note)
+     VALUES (?, ?, 'auto', ?)`,
+    habitId,
+    nowBogotaDateTime(),
+    'Completado automáticamente por el recordatorio vinculado',
+  )
+  const doneToday = done + 1
+  const met = doneToday >= target
+  if (!met) await upsertDefer(db, habitId, date)
+  return met
+}
 
 // Marca una unidad del hábito con la hora actual de Bogotá. Usado por la API
 // de widgets (widget.js); misma semántica que POST /:id/check: idempotente al
@@ -766,6 +801,7 @@ export async function checkHabitForWidget(db, id) {
   const done = await countHabitEventsForDate(db, id, date)
   const target = Number(habit.target_per_day)
   if (done >= target) {
+    await completeLinkedReminders(db, id)
     return { habit, met: true, done_today: done, target, already: true }
   }
 
@@ -780,6 +816,7 @@ export async function checkHabitForWidget(db, id) {
   const doneToday = done + 1
   const met = doneToday >= target
   if (!met) await upsertDefer(db, id, date)
+  if (met) await completeLinkedReminders(db, id)
   return { habit, met, done_today: doneToday, target, already: false }
 }
 
@@ -798,6 +835,7 @@ habits.post('/:id/check', async (c) => {
   const done = await countHabitEventsForDate(c.env.DB, id, date)
   const target = Number(habit.target_per_day)
   if (done >= target) {
+    await completeLinkedReminders(c.env.DB, id)
     return ok(c, { met: true, done_today: done, target, event: null, deferred: false })
   }
 
@@ -816,6 +854,7 @@ habits.post('/:id/check', async (c) => {
     await upsertDefer(c.env.DB, id, date)
     deferred = true
   }
+  if (met) await completeLinkedReminders(c.env.DB, id)
 
   const event = await first(
     c.env.DB,

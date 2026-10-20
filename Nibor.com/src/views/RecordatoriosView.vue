@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { formatDate } from '../utils/format.js'
 
 const reminders = ref([])
+const habits = ref([])
 const loading = ref(true)
 const pageError = ref('')
 const saving = ref(false)
@@ -45,6 +46,7 @@ const form = reactive({
   repetir_minutos: '',
   proxima_fecha: '',
   hora: '',
+  habit_id: '',
 })
 
 const generalRepeatLabel = computed(() => (
@@ -108,6 +110,15 @@ async function loadReminders() {
   }
 }
 
+async function loadHabits() {
+  try {
+    const data = await fetchJson('/api/habits')
+    habits.value = data.habits
+  } catch {
+    // el selector de hábito simplemente queda vacío
+  }
+}
+
 function frecuenciaLabel(reminder) {
   if (!reminder.frecuencia_dias) return 'Una sola vez'
   const preset = FRECUENCIAS.find((item) => item.value === reminder.frecuencia_dias)
@@ -133,6 +144,7 @@ function subtitle(reminder) {
       ?? `cada ${reminder.repetir_minutos} minutos`
     parts.push(`avisa ${label}`)
   }
+  if (reminder.habit_nombre) parts.push(`🔗 ${reminder.habit_nombre}`)
   return parts.join(' · ')
 }
 
@@ -147,6 +159,7 @@ function openEditor(reminder = null) {
   form.repetir_minutos = reminder?.repetir_minutos ? String(reminder.repetir_minutos) : ''
   form.proxima_fecha = reminder?.proxima_fecha ?? new Date().toISOString().slice(0, 10)
   form.hora = reminder?.hora ?? ''
+  form.habit_id = reminder?.habit_id ?? ''
   editorError.value = ''
   editorOpen.value = true
 }
@@ -167,6 +180,7 @@ async function saveReminder() {
         repetir_minutos: form.repetir_minutos === '' ? null : Number(form.repetir_minutos),
         proxima_fecha: form.proxima_fecha,
         hora: form.hora || null,
+        habit_id: form.habit_id === '' ? null : Number(form.habit_id),
       }),
     })
     editorOpen.value = false
@@ -218,6 +232,7 @@ async function toggleActive(reminder) {
 onMounted(() => {
   loadReminders()
   loadRepeatSetting()
+  loadHabits()
 })
 onBeforeUnmount(() => window.clearTimeout(repeatSavedTimer))
 </script>
@@ -387,6 +402,15 @@ onBeforeUnmount(() => window.clearTimeout(repeatSavedTimer))
           <label class="grid gap-1 text-sm">
             <span class="font-medium text-zinc-700 dark:text-zinc-300">Notas <span class="font-normal text-zinc-400">(opcional)</span></span>
             <textarea v-model="form.notas" maxlength="500" rows="2" class="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100" />
+          </label>
+
+          <label v-if="habits.length" class="grid gap-1 text-sm">
+            <span class="font-medium text-zinc-700 dark:text-zinc-300">Vincular con un hábito <span class="font-normal text-zinc-400">(opcional)</span></span>
+            <select v-model="form.habit_id" class="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-zinc-900 outline-none focus:border-emerald-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
+              <option value="">Ninguno</option>
+              <option v-for="habit in habits" :key="habit.id" :value="habit.id">{{ habit.emoji ?? '' }} {{ habit.name }}</option>
+            </select>
+            <p class="text-xs text-zinc-400">Al marcar uno como hecho, el otro se marca solo (y viceversa).</p>
           </label>
 
           <div v-if="editorError" class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300">{{ editorError }}</div>

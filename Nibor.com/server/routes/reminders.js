@@ -56,6 +56,7 @@ function normalizeReminder(body, current = {}) {
     proxima_fecha: body.proxima_fecha === undefined ? current.proxima_fecha : cleanText(body.proxima_fecha),
     hora: body.hora === undefined ? current.hora ?? null : cleanNullableText(body.hora),
     activo: body.activo === undefined ? current.activo ?? 1 : (body.activo ? 1 : 0),
+    habit_id: body.habit_id === undefined ? current.habit_id ?? null : toInteger(body.habit_id, null),
   }
 }
 
@@ -73,15 +74,36 @@ function validateReminder(reminder) {
   }
   if (!isValidDate(reminder.proxima_fecha)) return 'La fecha del recordatorio no es una fecha válida'
   if (reminder.hora !== null && !isValidTime(reminder.hora)) return 'La hora debe tener formato HH:MM'
+  if (reminder.habit_id !== null && !Number.isInteger(reminder.habit_id)) return 'El hábito debe ser válido'
   return null
+}
+
+async function validateHabitLink(db, habit_id) {
+  if (habit_id === null) return null
+  const habit = await first(db, 'SELECT id FROM habits WHERE id = ?', habit_id)
+  if (!habit) return 'Hábito no encontrado'
+  return null
+}
+
+function getReminderWithHabit(db, id) {
+  return first(
+    db,
+    `SELECT r.*, h.name AS habit_nombre
+     FROM reminders r
+     LEFT JOIN habits h ON h.id = r.habit_id
+     WHERE r.id = ?`,
+    id,
+  )
 }
 
 reminders.get('/', async (c) => {
   const hoy = todayIso()
   const rows = await all(
     c.env.DB,
-    `SELECT * FROM reminders
-     ORDER BY completado_en IS NOT NULL, activo DESC, proxima_fecha ASC, id ASC`,
+    `SELECT r.*, h.name AS habit_nombre
+     FROM reminders r
+     LEFT JOIN habits h ON h.id = r.habit_id
+     ORDER BY r.completado_en IS NOT NULL, r.activo DESC, r.proxima_fecha ASC, r.id ASC`,
   )
   return ok(c, rows.map((row) => enrichReminder(row, hoy)))
 })
@@ -92,14 +114,16 @@ reminders.post('/', async (c) => {
   const reminder = normalizeReminder(body, { proxima_fecha: todayIso() })
   const error = validateReminder(reminder)
   if (error) return fail(c, error)
+  const habitError = await validateHabitLink(c.env.DB, reminder.habit_id)
+  if (habitError) return fail(c, habitError, 404)
 
   const meta = await run(
     c.env.DB,
-    `INSERT INTO reminders (titulo, notas, frecuencia_dias, repetir_minutos, proxima_fecha, hora, activo)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    reminder.titulo, reminder.notas, reminder.frecuencia_dias, reminder.repetir_minutos, reminder.proxima_fecha, reminder.hora, reminder.activo,
+    `INSERT INTO reminders (titulo, notas, frecuencia_dias, repetir_minutos, proxima_fecha, hora, activo, habit_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    reminder.titulo, reminder.notas, reminder.frecuencia_dias, reminder.repetir_minutos, reminder.proxima_fecha, reminder.hora, reminder.activo, reminder.habit_id,
   )
-  const row = await first(c.env.DB, 'SELECT * FROM reminders WHERE id = ?', meta.last_row_id)
+  const row = await getReminderWithHabit(c.env.DB, meta.last_row_id)
   return ok(c, enrichReminder(row), 201)
 })
 
@@ -113,6 +137,8 @@ reminders.put('/:id', async (c) => {
   const reminder = normalizeReminder(body, current)
   const error = validateReminder(reminder)
   if (error) return fail(c, error)
+  const habitError = await validateHabitLink(c.env.DB, reminder.habit_id)
+  if (habitError) return fail(c, habitError, 404)
 
   // Reactivar un recordatorio completado lo devuelve a la lista normal
   const completadoEn = reminder.activo && current.completado_en ? null : current.completado_en
@@ -120,13 +146,54 @@ reminders.put('/:id', async (c) => {
   await run(
     c.env.DB,
     `UPDATE reminders
-     SET titulo = ?, notas = ?, frecuencia_dias = ?, repetir_minutos = ?, proxima_fecha = ?, hora = ?, activo = ?, completado_en = ?, updated_at = datetime('now')
+     SET titulo = ?, notas = ?, frecuencia_dias = ?, repetir_minutos = ?, proxima_fecha = ?, hora = ?, activo = ?, completado_en = ?, habit_id = ?, updated_at = datetime('now')
      WHERE id = ?`,
-    reminder.titulo, reminder.notas, reminder.frecuencia_dias, reminder.repetir_minutos, reminder.proxima_fecha, reminder.hora, reminder.activo, completadoEn, id,
+    reminder.titulo, reminder.notas, reminder.frecuencia_dias, reminder.repetir_minutos, reminder.proxima_fecha, reminder.hora, reminder.activo, completadoEn, reminder.habit_id, id,
   )
-  const row = await first(c.env.DB, 'SELECT * FROM reminders WHERE id = ?', id)
+  const row = await getReminderWithHabit(c.env.DB, id)
   return ok(c, enrichReminder(row))
 })
+
+// Aplica el cambio de estado de "completar" en la fila (compartido por la
+// ruta HTTP, el widget y el cascade que dispara el hábito vinculado).
+// cascade=false evita el ciclo cuando ya venimos de marcar el hábito.
+async function completeReminderCore(db, current, hoy, { cascade = true } = {}) {
+  if (current.frecuencia_dias) {
+    await run(
+      db,
+      `UPDATE reminders SET proxima_fecha = ?, activo = 1, completado_en = NULL, updated_at = datetime('now') WHERE id = ?`,
+      addDaysIso(hoy, Number(current.frecuencia_dias)),
+      current.id,
+    )
+  } else {
+    await run(
+      db,
+      `UPDATE reminders SET activo = 0, completado_en = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
+      current.id,
+    )
+  }
+  if (cascade && current.habit_id) {
+    // Import dinámico para evitar un ciclo estático reminders.js <-> habits.js.
+    const { markHabitDoneFromLink } = await import('./habits.js')
+    await markHabitDoneFromLink(db, current.habit_id)
+  }
+}
+
+// Recordatorios vinculados a un hábito (habit_id) que siguen pendientes hoy
+// se completan cuando ese hábito se marca hecho desde Hábitos. cascade:false
+// porque el hábito ya está marcado — no hay que volver a tocarlo.
+export async function completeLinkedRemindersForHabit(db, habitId) {
+  const hoy = todayIso()
+  const rows = await all(
+    db,
+    `SELECT * FROM reminders WHERE habit_id = ? AND activo = 1 AND completado_en IS NULL AND proxima_fecha <= ?`,
+    habitId,
+    hoy,
+  )
+  for (const reminder of rows) {
+    await completeReminderCore(db, reminder, hoy, { cascade: false })
+  }
+}
 
 // Marcar como hecho: si tiene frecuencia, programa la siguiente vez;
 // si era de una sola vez, queda completado y deja de notificar.
@@ -137,21 +204,8 @@ reminders.post('/:id/complete', async (c) => {
   if (!current) return fail(c, 'Recordatorio no encontrado', 404)
 
   const hoy = todayIso()
-  if (current.frecuencia_dias) {
-    await run(
-      c.env.DB,
-      `UPDATE reminders SET proxima_fecha = ?, activo = 1, completado_en = NULL, updated_at = datetime('now') WHERE id = ?`,
-      addDaysIso(hoy, Number(current.frecuencia_dias)),
-      id,
-    )
-  } else {
-    await run(
-      c.env.DB,
-      `UPDATE reminders SET activo = 0, completado_en = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
-      id,
-    )
-  }
-  const row = await first(c.env.DB, 'SELECT * FROM reminders WHERE id = ?', id)
+  await completeReminderCore(c.env.DB, current, hoy)
+  const row = await getReminderWithHabit(c.env.DB, id)
   return ok(c, enrichReminder(row, hoy))
 })
 
@@ -174,27 +228,15 @@ export async function buildPendingReminders(db) {
 }
 
 // Misma semántica que POST /:id/complete: si tiene frecuencia, reprograma
-// proxima_fecha; si era único, queda completado.
+// proxima_fecha; si era único, queda completado. También dispara el cascade
+// hacia el hábito vinculado, igual que la ruta HTTP.
 export async function completeReminderForWidget(db, id) {
   const current = await first(db, 'SELECT * FROM reminders WHERE id = ?', id)
   if (!current) return { error: 'Recordatorio no encontrado', status: 404 }
 
   const hoy = todayIso()
-  if (current.frecuencia_dias) {
-    await run(
-      db,
-      `UPDATE reminders SET proxima_fecha = ?, activo = 1, completado_en = NULL, updated_at = datetime('now') WHERE id = ?`,
-      addDaysIso(hoy, Number(current.frecuencia_dias)),
-      id,
-    )
-  } else {
-    await run(
-      db,
-      `UPDATE reminders SET activo = 0, completado_en = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
-      id,
-    )
-  }
-  const row = await first(db, 'SELECT * FROM reminders WHERE id = ?', id)
+  await completeReminderCore(db, current, hoy)
+  const row = await getReminderWithHabit(db, id)
   return { reminder: enrichReminder(row, hoy) }
 }
 
